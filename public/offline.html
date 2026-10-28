@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hors connexion | DIARRASSOUBA</title>
+<meta name="theme-color" content="#121419">
+<script src="assets/js/theme.js"></script>
+<style>
+  :root { --bg: #EEE9DF; --surface: #FFFCF6; --border: #E2D9C8; --text: #15171C; --muted: #6A6356; --grid: rgba(21,23,28,.045); }
+  :root[data-theme="dark"] { --bg: #0C0D10; --surface: #15171C; --border: #252930; --text: #F1ECE2; --muted: #A29D92; --grid: rgba(255,255,255,.03); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme]) { --bg: #0C0D10; --surface: #15171C; --border: #252930; --text: #F1ECE2; --muted: #A29D92; --grid: rgba(255,255,255,.03); } }
+  body { margin: 0; font: 15px/1.55 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text);
+    background: var(--bg); background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px); background-size: 28px 28px; }
+  .top { color: #F1ECE2; padding: 24px 16px 70px; background: #121419;
+    background-image: radial-gradient(700px 300px at 85% 0%, rgba(255,90,31,.22), transparent 65%);
+    border-bottom: 6px solid transparent; border-image: repeating-linear-gradient(-45deg, #FF5A1F 0 12px, #1A1205 12px 24px) 6; }
+  .top div, main { max-width: 640px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 12px; font: 800 1.05rem/1 "Barlow Condensed", "Arial Narrow", sans-serif; letter-spacing: .1em; }
+  .mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 5px; background: #FF5A1F; color: #160B05; }
+  .eyebrow { margin: 34px 0 4px; font: 600 .72rem/1 "IBM Plex Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: #FF5A1F; }
+  h1 { font: 800 2.8rem/.95 "Barlow Condensed", "Arial Narrow", sans-serif; text-transform: uppercase; margin: 0 0 12px; }
+  .top p { color: #C9C3B8; margin: 0; }
+  main { padding: 0 16px; margin-top: -44px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-top: 4px solid #FF5A1F; border-radius: 10px; padding: 22px; box-shadow: 0 24px 50px -18px rgba(0,0,0,.45); }
+  .card p { margin: 0 0 16px; color: var(--muted); }
+  a.btn { display: inline-flex; align-items: center; min-height: 46px; padding: 0 20px; border-radius: 5px; background: #FF5A1F; color: #160B05; text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="top"><div>
+  <span class="brand"><span class="mark">DI</span>DIARRASSOUBA</span>
+  <p class="eyebrow">Liaison interrompue</p>
+  <h1>Pas de connexion</h1>
+  <p>L’application a besoin d’Internet pour afficher et enregistrer les colis, factures et paiements. Rien n’a été enregistré pendant la coupure.</p>
+</div></div>
+<main>
+  <div class="card">
+    <p>Vérifiez les données mobiles ou le Wi-Fi, puis réessayez.</p>
+    <a class="btn" href="">Réessayer</a>
+  </div>
+</main>
+</body>
+</html>

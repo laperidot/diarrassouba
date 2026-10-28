@@ -1,0 +1,34 @@
+{
+  "id": "./",
+  "name": "DIARRASSOUBA IMPORT-EXPORT",
+  "short_name": "Diarrassouba",
+  "description": "Gestion des colis, vols, factures et livraisons Égypte – Afrique de l'Ouest.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./tableau-de-bord",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#121419",
+  "theme_color": "#121419",
+  "categories": ["business", "productivity", "utilities"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "screenshots": [
+    { "src": "assets/screenshots/mobile-tableau-de-bord.webp", "sizes": "780x1688", "type": "image/webp", "form_factor": "narrow", "label": "Tableau de bord : où sont les colis en ce moment" },
+    { "src": "assets/screenshots/mobile-colis.webp", "sizes": "780x1688", "type": "image/webp", "form_factor": "narrow", "label": "Fiche colis : trajet, statut et historique (mode nuit)" },
+    { "src": "assets/screenshots/bureau-tableau-de-bord.webp", "sizes": "1280x800", "type": "image/webp", "form_factor": "wide", "label": "Tableau des départs et indicateurs de la station" },
+    { "src": "assets/screenshots/bureau-dossier.webp", "sizes": "1280x800", "type": "image/webp", "form_factor": "wide", "label": "Dossier de vol et marge estimée (mode nuit)" }
+  ],
+  "shortcuts": [
+    { "name": "Enregistrer un colis", "short_name": "Nouveau colis", "url": "./colis/nouveau", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Scanner", "url": "./scanner", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Suivi public", "url": "./suivi", "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

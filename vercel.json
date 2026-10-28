@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.php": {
+      "runtime": "vercel-php@0.7.3",
+      "maxDuration": 30
+    }
+  },
+  "routes": [
+    {
+      "src": "/sw\\.js",
+      "headers": { "Cache-Control": "no-cache", "Service-Worker-Allowed": "/" },
+      "dest": "/public/sw.js"
+    },
+    {
+      "src": "/manifest\\.webmanifest",
+      "headers": { "Cache-Control": "no-cache", "Content-Type": "application/manifest+json" },
+      "dest": "/public/manifest.webmanifest"
+    },
+    { "src": "/offline\\.html", "dest": "/public/offline.html" },
+    {
+      "src": "/assets/(.*)",
+      "headers": { "Cache-Control": "public, max-age=604800", "X-Content-Type-Options": "nosniff" },
+      "dest": "/public/assets/$1"
+    },
+    { "src": "/(.*)", "dest": "/api/index.php" }
+  ]
+}

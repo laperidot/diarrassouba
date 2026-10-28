@@ -1,0 +1,11 @@
+.env
+storage/*.sqlite*
+storage/sessions/
+storage/uploads/*
+storage/logs/*
+storage/backups/*
+storage/cache/*
+.vercel/
+__pycache__/
+*.pyc
+!storage/**/.gitkeep

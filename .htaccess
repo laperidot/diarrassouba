@@ -1,0 +1,14 @@
+# DIARRASSOUBA — racine du projet servie par Apache (XAMPP : http://localhost/diarrassouba/).
+# Tout est redirigé en interne vers public/ : .env, app/, storage/, docs/, tests/… ne sont jamais servis.
+# En production, faire pointer le domaine sur public/ (voir README) ; ce fichier est alors ignoré.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+# Sans mod_rewrite, rien n'est servi depuis la racine.
+<IfModule !mod_rewrite.c>
+  Require all denied
+</IfModule>
