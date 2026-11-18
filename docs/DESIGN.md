@@ -27,10 +27,10 @@ Le résultat doit rester un outil de comptoir rapide, lisible debout, téléphon
 ## Couleurs (tokens dans `public/assets/css/app.css`)
 Les composants n'utilisent que des tokens sémantiques, redéfinis pour chaque thème.
 
-| Token | Jour (papier kraft) | Nuit (tarmac) | Usage |
+| Token | Jour (feuillet blanc) | Nuit (tarmac) | Usage |
 |---|---|---|---|
-| `--bg` | #EEE9DF + quadrillage | #0C0D10 + quadrillage | fond de page |
-| `--surface` / `-2` / `-3` | #FFFCF6 / #F8F3EA / #EFE8DB | #15171C / #111317 / #1E2128 | feuillets, en-têtes de tableau, survol |
+| `--bg` | #FFFFFF, sans quadrillage | #0C0D10 + quadrillage | fond de page |
+| `--surface` / `-2` / `-3` | #FFFFFF / #F7F8FA / #EEF0F3 | #15171C / #111317 / #1E2128 | feuillets, en-têtes de tableau, survol |
 | `--text` / `--muted` | #15171C / #6A6356 | #F1ECE2 / #A29D92 | texte (contraste AA) |
 | `--orange` | #FF5A1F | #FF6A2E | **action décisive** (`.btn-go`), marque, étape courante |
 | `--orange-ink` | #B53A0A | #FF8C5C | liens et textes orange (AA) |
@@ -52,7 +52,7 @@ Les anciens noms (`--ink`, `--paper`, `--card`, `--line`…) restent des alias.
 - Choix enregistré dans le navigateur (`localStorage`, clé `di-theme`) : *Auto* (suit le système, en direct), *Jour*, *Nuit*.
 - Bascule soleil / lune dans la barre supérieure, la connexion et la page publique ; choix à trois positions dans Menu → Apparence.
 - Sans JavaScript : la préférence du système s'applique (CSS `prefers-color-scheme`).
-- Impression et manifeste : toujours en clair. Les PDF (facture, reçu, étiquette) reprennent la palette : bande orange, teintes kraft.
+- Impression et manifeste : toujours en clair. Les PDF (facture, reçu, relevé) : bandeau nuit à coupe oblique et filet orange, tableau à en-tête nuit et lignes alternées, total en bloc orange ; l'étiquette reste en noir pur pour l'impression thermique.
 
 ## Mise en page
 - Mobile d'abord : barre supérieure (marque, titre, thème, notifications) et barre d'onglets sombre en bas

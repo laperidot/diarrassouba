@@ -75,7 +75,7 @@ final class ExpenseController extends Controller
     {
         Auth::require('expenses.cancel');
         $this->attempt(fn () => (new ExpenseService())->cancel((int) $id, Request::str('reason')), "depenses/$id");
-        Session::flash('success', 'Dépense annulée. Elle reste visible dans l’historique.');
+        Session::flash('success', 'Dépense annulée. Elle reste visible, barrée.');
         $this->redirect('depenses/' . $id);
     }
 

@@ -6,9 +6,9 @@ $to = Domain::iata($s['destination_city'], $s['destination_country']);
 $toParcel = Domain::SHIPMENT_TO_PARCEL;
 ?>
 <div class="page-head">
-  <div><a class="crumb" href="<?= e(url('dossiers')) ?>">← Dossiers</a><h1 class="code" style="font-size:1.9rem"><?= e($s['reference']) ?></h1></div>
+  <div><a class="crumb" href="<?= e(url('dossiers')) ?>">← Vols</a><h1 class="code" style="font-size:1.9rem"><?= e($s['reference']) ?></h1></div>
   <div class="actions">
-    <a class="btn" href="<?= e(url('dossiers/' . $s['id'] . '/manifeste')) ?>" target="_blank" rel="noopener"><?= icon('print') ?>Manifeste</a>
+    <a class="btn" href="<?= e(url('dossiers/' . $s['id'] . '/manifeste')) ?>" target="_blank" rel="noopener"><?= icon('print') ?>Liste des colis à imprimer</a>
     <?php if (can('shipments.edit') && !in_array($s['status'], ['closed', 'cancelled'], true)): ?><a class="btn" href="<?= e(url('dossiers/' . $s['id'] . '/modifier')) ?>"><?= icon('edit') ?>Modifier</a><?php endif ?>
   </div>
 </div>
@@ -24,20 +24,20 @@ $toParcel = Domain::SHIPMENT_TO_PARCEL;
     </section>
 
     <?php
-    $steps = ['preparation' => 'Préparation', 'departed' => 'Parti', 'in_transit' => 'En vol', 'arrived' => 'Arrivé', 'closed' => 'Clôturé'];
+    $steps = ['preparation' => 'Préparation', 'departed' => 'Parti', 'in_transit' => 'En vol', 'arrived' => 'Arrivé', 'closed' => 'Terminé'];
     $stepKeys = array_keys($steps);
     $cur = array_search($s['status'], $stepKeys, true);
     $loadable = can('shipments.load') && $s['status'] === 'preparation';   // ajouter des colis (comptoir compris)
     $editable = can('shipments.edit') && $s['status'] === 'preparation';   // retirer des colis
     $nextHelp = [
-        'preparation' => 'Quand l’avion a décollé, confirmez le départ : les colis passent « Expédié » et les clients le voient sur le suivi.',
-        'departed' => 'Mettez à jour quand le vol est en transit ou dès son arrivée.',
-        'in_transit' => 'Confirmez l’arrivée à destination : les colis passent « Arrivé ».',
-        'arrived' => 'Clôturez le dossier quand tous les colis sont remis.',
+        'preparation' => 'Quand l’avion a décollé, confirmez le départ : tous les colis passent « Parti » et les clients le voient sur leur page de suivi.',
+        'departed' => 'Confirmez l’arrivée dès que l’avion a atterri.',
+        'in_transit' => 'Confirmez l’arrivée : les colis passent « Arrivé ».',
+        'arrived' => 'Quand tous les colis sont remis aux clients, terminez le vol.',
     ][$s['status']] ?? '';
     ?>
     <?php if ($s['status'] !== 'cancelled'): ?>
-    <ol class="steps" aria-label="Étapes du dossier">
+    <ol class="steps" aria-label="Étapes du vol">
       <?php foreach ($steps as $k => $label): $i = array_search($k, $stepKeys, true); ?>
         <li class="<?= $i < $cur ? 'done' : ($i === $cur ? 'now' : '') ?>"<?= $i === $cur ? ' aria-current="step"' : '' ?>><span class="dot"></span><?= e($label) ?></li>
       <?php endforeach ?>
@@ -46,16 +46,16 @@ $toParcel = Domain::SHIPMENT_TO_PARCEL;
 
     <?php if (can('shipments.edit') && $transitions): ?>
     <section class="panel next-step" aria-labelledby="next-title">
-      <div class="panel-head"><h2 id="next-title">Étape suivante</h2><?= status_badge($s['status'], 'shipment') ?></div>
+      <div class="panel-head"><h2 id="next-title">Prochaine étape</h2><?= status_badge($s['status'], 'shipment') ?></div>
       <?php if ($nextHelp): ?><p class="muted small" style="margin-top:-6px"><?= e($nextHelp) ?></p><?php endif ?>
-      <?php if ($s['status'] === 'preparation' && !$parcels): ?><p class="small" style="color:var(--amber-ink)">Le dossier est vide : chargez d’abord les colis ci-dessous.</p><?php endif ?>
+      <?php if ($s['status'] === 'preparation' && !$parcels): ?><p class="small" style="color:var(--amber-ink)">Le vol est vide : ajoutez d’abord les colis ci-dessous.</p><?php endif ?>
       <?= App\Core\View::partial('partials/shipment-status', ['sh' => $s, 'transitions' => $transitions]) ?>
     </section>
     <?php endif ?>
 
     <?php if ($loadable): ?>
     <section class="panel load-zone" id="charger" aria-labelledby="load-title">
-      <div class="panel-head"><h2 id="load-title">Charger le vol</h2><span class="muted small"><?= pluralize(count($parcels), 'colis', 'colis') ?> · <?= e(kg((int) $s['total_weight_g'])) ?></span></div>
+      <div class="panel-head"><h2 id="load-title">Mettre des colis dans ce vol</h2><span class="muted small"><?= pluralize(count($parcels), 'colis', 'colis') ?> · <?= e(kg((int) $s['total_weight_g'])) ?></span></div>
       <form class="scan-add" method="post" action="<?= e(url('dossiers/' . $s['id'] . '/colis')) ?>">
         <?= csrf_field() ?>
         <label for="scan-code"><?= icon('scan') ?><span>Scannez l’étiquette ou tapez le code, puis Entrée</span></label>
@@ -69,8 +69,8 @@ $toParcel = Domain::SHIPMENT_TO_PARCEL;
       <form method="post" action="<?= e(url('dossiers/' . $s['id'] . '/colis')) ?>" data-select-all-scope data-pick-list>
         <?= csrf_field() ?>
         <div class="pick-head">
-          <p class="label">Ou cochez parmi les colis en attente pour <?= e(country_name($s['destination_country'])) ?> (<?= count($candidates) ?>)</p>
-          <?php if (count($candidates) > 6): ?><input type="search" data-pick-filter placeholder="Filtrer : code, client…" aria-label="Filtrer les colis en attente"><?php endif ?>
+          <p class="label">Ou cochez les colis qui attendent pour <?= e(country_name($s['destination_country'])) ?> (<?= count($candidates) ?>)</p>
+          <?php if (count($candidates) > 6): ?><input type="search" data-pick-filter placeholder="Chercher : code, client…" aria-label="Chercher parmi les colis qui attendent"><?php endif ?>
           <label class="check"><input type="checkbox" data-select-all> <strong>Tout sélectionner</strong></label>
         </div>
         <div class="pick-items">
@@ -80,21 +80,21 @@ $toParcel = Domain::SHIPMENT_TO_PARCEL;
         </div>
         <div class="pick-foot">
           <span class="small" data-pick-count aria-live="polite">Aucun colis sélectionné</span>
-          <button class="btn btn-primary">Ajouter au dossier</button>
+          <button class="btn btn-primary">Mettre dans ce vol</button>
         </div>
       </form>
       <?php else: ?>
-        <p class="muted small" style="margin:14px 0 0">Aucun autre colis en attente pour <?= e(country_name($s['destination_country'])) ?>. Les colis apparaissent ici dès leur enregistrement au comptoir.<?php if (can('parcels.create')): ?> <a href="<?= e(url('colis/nouveau')) ?>">Enregistrer un colis</a><?php endif ?></p>
+        <p class="muted small" style="margin:14px 0 0">Aucun autre colis n’attend pour <?= e(country_name($s['destination_country'])) ?>. Les colis apparaissent ici dès qu’ils sont enregistrés au comptoir.<?php if (can('parcels.create')): ?> <a href="<?= e(url('colis/nouveau')) ?>">Enregistrer un colis</a><?php endif ?></p>
       <?php endif ?>
     </section>
     <?php elseif (can('shipments.edit') && in_array($s['status'], ['departed', 'in_transit', 'arrived'], true)): ?>
-      <p class="notice"><?= icon('alert') ?><span>Le vol est parti : le chargement est verrouillé.<?= in_array('preparation', $transitions, true) ? ' Pour corriger un oubli, repassez le dossier « En préparation » dans l’étape suivante.' : '' ?></span></p>
+      <p class="notice"><?= icon('alert') ?><span>Le vol est parti : on ne peut plus ajouter ni retirer de colis.<?= in_array('preparation', $transitions, true) ? ' En cas d’oubli, choisissez « Remettre en préparation » dans la prochaine étape.' : '' ?></span></p>
     <?php endif ?>
 
     <section class="panel flush">
-      <div class="panel-head"><h2>Colis du dossier</h2><span class="muted small"><?= count($parcels) ?> colis, <?= e(kg((int) $s['total_weight_g'])) ?></span></div>
+      <div class="panel-head"><h2>Colis dans ce vol</h2><span class="muted small"><?= count($parcels) ?> colis, <?= e(kg((int) $s['total_weight_g'])) ?></span></div>
       <?php if (!$parcels): ?>
-        <div class="empty"><p><?= $loadable ? 'Aucun colis pour l’instant : scannez-les ou cochez-les dans « Charger le vol » ci-dessus.' : 'Aucun colis dans ce dossier.' ?></p></div>
+        <div class="empty"><p><?= $loadable ? 'Aucun colis pour l’instant : scannez-les ou cochez-les juste au-dessus.' : 'Aucun colis dans ce vol.' ?></p></div>
       <?php else: ?>
       <table class="table stacked">
         <thead><tr><th>Code</th><th>Destinataire</th><th class="num">Poids</th><th>Statut</th><th></th></tr></thead>
@@ -107,7 +107,7 @@ $toParcel = Domain::SHIPMENT_TO_PARCEL;
             <td data-label="Statut"><?= status_badge($p['status']) ?></td>
             <td class="num">
               <?php if ($editable): ?>
-              <form method="post" action="<?= e(url('dossiers/' . $s['id'] . '/colis/' . $p['id'] . '/retirer')) ?>"><?= csrf_field() ?><button class="btn btn-sm btn-quiet" data-confirm="Retirer ce colis du dossier ?">Retirer</button></form>
+              <form method="post" action="<?= e(url('dossiers/' . $s['id'] . '/colis/' . $p['id'] . '/retirer')) ?>"><?= csrf_field() ?><button class="btn btn-sm btn-quiet" data-confirm="Retirer ce colis du vol ?">Retirer</button></form>
               <?php endif ?>
             </td>
           </tr>
@@ -122,29 +122,29 @@ $toParcel = Domain::SHIPMENT_TO_PARCEL;
   <aside class="stack">
     <section class="panel">
       <dl class="dl">
-        <dt>LTA / AWB</dt><dd class="code"><?= e($s['awb_number'] ?: '—') ?></dd>
-        <dt>Réf. transporteur</dt><dd><?= e($s['carrier_reference'] ?: '—') ?></dd>
+        <dt>N° de la lettre de transport</dt><dd class="code"><?= e($s['awb_number'] ?: '—') ?></dd>
+        <dt>Réf. de la compagnie</dt><dd><?= e($s['carrier_reference'] ?: '—') ?></dd>
         <dt>Départ prévu</dt><dd><?= e(dt($s['planned_departure'])) ?></dd>
         <dt>Départ réel</dt><dd><?= e(dt($s['actual_departure'])) ?></dd>
         <dt>Arrivée prévue</dt><dd><?= e(dt($s['planned_arrival'])) ?></dd>
         <dt>Arrivée réelle</dt><dd><?= e(dt($s['actual_arrival'])) ?></dd>
-        <?php if (can('dashboard.finance') && $s['freight_cost_minor'] !== null): ?><dt>Fret prévu (devis)</dt><dd class="num"><?= e(money((int) $s['freight_cost_minor'], $s['freight_currency'])) ?></dd><?php endif ?>
+        <?php if (can('dashboard.finance') && $s['freight_cost_minor'] !== null): ?><dt>Prix du cargo prévu</dt><dd class="num"><?= e(money((int) $s['freight_cost_minor'], $s['freight_currency'])) ?></dd><?php endif ?>
       </dl>
       <?php if ($s['notes']): ?><hr><p class="small"><?= nl2br(e($s['notes'])) ?></p><?php endif ?>
     </section>
     <?php if ($margin !== null): ?>
     <section class="panel">
-      <div class="panel-head"><h2>Marge estimée</h2><?php if (can('expenses.edit')): ?><a href="<?= e(url('depenses/nouvelle', ['dossier' => $s['id']])) ?>">+ Dépense</a><?php endif ?></div>
+      <div class="panel-head"><h2>Gain estimé</h2><?php if (can('expenses.edit')): ?><a href="<?= e(url('depenses/nouvelle', ['dossier' => $s['id']])) ?>">+ Dépense</a><?php endif ?></div>
       <?php if (!$margin['rows']): ?>
-        <p class="muted small" style="margin:0">Pas encore de facture validée ni de dépense liée à ce dossier.</p>
+        <p class="muted small" style="margin:0">Pas encore de facture ni de dépense pour ce vol.</p>
       <?php else: foreach ($margin['rows'] as $cur => $m): ?>
         <div class="kv-line"><span>Facturé (<?= e($cur) ?>)</span><span class="num"><?= e(money($m['billed'], $cur)) ?></span></div>
-        <div class="kv-line"><span>Dépenses liées</span><span class="num">− <?= e(money($m['expenses'], $cur)) ?></span></div>
-        <div class="kv-line"><strong>Marge estimée</strong><strong class="num" style="color:<?= $m['margin'] < 0 ? 'var(--coral-ink)' : 'var(--teal-ink)' ?>"><?= e(money($m['margin'], $cur)) ?></strong></div>
+        <div class="kv-line"><span>Dépenses du vol</span><span class="num">− <?= e(money($m['expenses'], $cur)) ?></span></div>
+        <div class="kv-line"><strong>Gain estimé</strong><strong class="num" style="color:<?= $m['margin'] < 0 ? 'var(--coral-ink)' : 'var(--teal-ink)' ?>"><?= e(money($m['margin'], $cur)) ?></strong></div>
       <?php endforeach ?>
       <?php endif ?>
-      <p class="small muted" style="margin:10px 0 0">Estimation de gestion, pas un résultat comptable : frais généraux et conversions de devises exclus.<?= $margin['unbilled'] ? ' ' . pluralize($margin['unbilled'], 'colis non facturé', 'colis non facturés') . '.' : '' ?></p>
-      <a class="btn btn-sm" style="margin-top:10px" href="<?= e(url('depenses', ['dossier' => $s['id']])) ?>">Voir les dépenses du dossier</a>
+      <p class="small muted" style="margin:10px 0 0">Simple estimation : les frais généraux (loyer, salaires…) ne sont pas comptés, et chaque monnaie est comptée à part.<?= $margin['unbilled'] ? ' ' . pluralize($margin['unbilled'], 'colis pas encore facturé', 'colis pas encore facturés') . '.' : '' ?></p>
+      <a class="btn btn-sm" style="margin-top:10px" href="<?= e(url('depenses', ['dossier' => $s['id']])) ?>">Voir les dépenses du vol</a>
     </section>
     <?php endif ?>
   </aside>

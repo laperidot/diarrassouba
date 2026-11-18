@@ -9,7 +9,7 @@ $err = !empty($formatError) ? 'format' : null;
 <div class="public-top">
   <div class="inner">
     <div class="public-bar"><a class="brand" href="<?= e(url('suivi')) ?>"><span class="brand-name">DIARRASSOUBA</span><span class="brand-sub">Import-Export</span></a><?= theme_toggle() ?></div>
-    <p class="eyebrow">Suivi de fret · Le Caire → Afrique de l’Ouest</p>
+    <p class="eyebrow">Suivi de colis · Le Caire → Afrique de l’Ouest</p>
     <h1>Où en est votre colis ?</h1>
     <p>Saisissez le code inscrit sur votre reçu ou sous le code-barres de l’étiquette.</p>
   </div>
@@ -55,11 +55,11 @@ $err = !empty($formatError) ? 'format' : null;
     $instructions = match ($p['status']) {
         'registered', 'awaiting' => 'Votre colis est enregistré à notre comptoir et sera placé sur un prochain vol.',
         'shipped', 'in_transit' => 'Votre colis est en vol. Vous serez prévenu dès son arrivée.',
-        'arrived' => 'Le vol est arrivé. Le colis est en cours de dédouanement et de tri ; il sera bientôt disponible au dépôt.',
-        'at_depot' => 'Votre colis vous attend au dépôt. Présentez ce code de suivi et une pièce d’identité au nom du destinataire.' . ($depot ? ' ' . $depot : ''),
+        'arrived' => 'Votre colis est arrivé. Nous le préparons (douane, tri) : il sera bientôt prêt à récupérer au dépôt.',
+        'at_depot' => 'Votre colis vous attend au dépôt. Venez avec ce code et une pièce d’identité au nom du destinataire.' . ($depot ? ' ' . $depot : ''),
         'out_for_delivery' => 'Un livreur est en route. Gardez votre téléphone à portée de main.',
         'delivered' => 'Votre colis a été remis. Merci de votre confiance.',
-        default => 'Notre équipe traite une situation particulière sur ce colis. Contactez-nous' . ($phone ? ' au ' . $phone : '') . ' en indiquant votre code de suivi.',
+        default => 'Il y a un souci avec ce colis et notre équipe s’en occupe. Appelez-nous' . ($phone ? ' au ' . $phone : '') . ' en donnant votre code de suivi.',
     };
   ?>
     <article class="boarding" aria-labelledby="tc">
@@ -81,11 +81,11 @@ $err = !empty($formatError) ? 'format' : null;
         <?= parcel_rail($p['status']) ?>
         <p style="margin:18px 0 16px"><?= e($instructions) ?></p>
         <dl class="dl">
-          <dt>Pris en charge le</dt><dd><?= e(dt($p['received_at'], 'd/m/Y')) ?></dd>
+          <dt>Déposé le</dt><dd><?= e(dt($p['received_at'], 'd/m/Y')) ?></dd>
           <?php if ($p['weight'] !== null): ?><dt>Poids</dt><dd class="num"><?= e(kg($p['weight'])) ?><?= $p['pieces'] > 1 ? ', ' . (int) $p['pieces'] . ' pièces' : '' ?></dd><?php endif ?>
           <?php if ($p['recipient']): ?><dt>Destinataire</dt><dd><?= e($p['recipient']) ?></dd><?php endif ?>
           <?php if ($p['flight']): ?><dt>Vol</dt><dd class="code"><?= e($p['flight']) ?></dd><?php endif ?>
-          <?php if ($p['eta']): ?><dt>Arrivée prévue</dt><dd><?= e(dt($p['eta'], 'd/m/Y')) ?> (estimation)</dd><?php endif ?>
+          <?php if ($p['eta']): ?><dt>Arrivée prévue</dt><dd><?= e(dt($p['eta'], 'd/m/Y')) ?> (environ)</dd><?php endif ?>
         </dl>
       </div>
     </article>
@@ -93,7 +93,7 @@ $err = !empty($formatError) ? 'format' : null;
     <section class="panel" style="margin-top:16px" aria-labelledby="hist">
       <h2 id="hist" style="margin-bottom:14px">Historique</h2>
       <?php if (!$events): ?>
-        <p class="muted">Aucun événement n’a encore été enregistré pour ce colis.</p>
+        <p class="muted">Rien de nouveau pour l’instant sur ce colis.</p>
       <?php else: ?>
       <ol class="timeline">
         <?php foreach ($events as $ev): ?>

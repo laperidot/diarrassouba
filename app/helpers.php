@@ -156,6 +156,32 @@ function normalize_phone(?string $phone): string
     return strlen($digits) > 10 ? substr($digits, -10) : $digits;
 }
 
+/**
+ * Numéro au format international sans « + » (lien wa.me) : « +… » ou « 00… » gardés tels quels,
+ * sinon indicatif du pays du client (0 initial retiré là où il sert de préfixe national). '' si inconnu.
+ */
+function intl_phone(?string $phone, ?string $country): string
+{
+    $raw = trim((string) $phone);
+    $digits = preg_replace('/\D+/', '', $raw);
+    if ($digits === '') {
+        return '';
+    }
+    if (str_starts_with($raw, '+')) {
+        return $digits;
+    }
+    if (str_starts_with($digits, '00')) {
+        return substr($digits, 2);
+    }
+    $dial = ['CI' => '225', 'EG' => '20', 'BF' => '226', 'ML' => '223', 'SN' => '221', 'GN' => '224', 'TG' => '228', 'BJ' => '229',
+        'NE' => '227', 'GH' => '233', 'LR' => '231', 'NG' => '234', 'FR' => '33', 'AE' => '971', 'TR' => '90', 'CN' => '86'][strtoupper((string) $country)] ?? null;
+    if ($dial === null) {
+        return '';
+    }
+    // La Côte d'Ivoire garde ses 10 chiffres (07…) ; ailleurs le 0 initial est le préfixe national.
+    return $dial . ($dial !== '225' ? ltrim($digits, '0') : $digits);
+}
+
 /** Masque un téléphone pour l'affichage public : 07 •• •• 45 12 */
 function mask_phone(?string $phone): string
 {

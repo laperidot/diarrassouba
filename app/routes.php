@@ -40,6 +40,7 @@ $r->get('/api/colis/recherche-code', [MiscController::class, 'codeLookup']);
 $r->get('/notifications', [MiscController::class, 'notifications']);
 $r->post('/notifications/lues', [MiscController::class, 'markRead']);
 $r->get('/api/ping', [MiscController::class, 'ping']);
+$r->get('/prechargement.json', [MiscController::class, 'speculationRules']);
 
 // ---- Clients ----
 $r->get('/clients', [ClientController::class, 'index']);
@@ -48,6 +49,8 @@ $r->post('/clients', [ClientController::class, 'store']);
 $r->get('/api/clients', [ClientController::class, 'search']);
 $r->get('/clients/{id}', [ClientController::class, 'show']);
 $r->get('/clients/{id}/modifier', [ClientController::class, 'edit']);
+$r->get('/clients/{id}/releve', [ClientController::class, 'statement']);
+$r->post('/clients/{id}/releve/partage', [ClientController::class, 'shareStatement']);
 $r->post('/clients/{id}', [ClientController::class, 'update']);
 $r->post('/clients/{id}/archiver', [ClientController::class, 'archive']);
 
@@ -62,6 +65,7 @@ $r->post('/colis/{id}/statut', [ParcelController::class, 'status']);
 $r->post('/colis/{id}/pieces', [ParcelController::class, 'attach']);
 $r->get('/colis/{id}/etiquette', [ParcelController::class, 'label']);
 $r->post('/colis/{id}/livraison', [DeliveryController::class, 'plan']);
+$r->post('/colis/{id}/remise', [DeliveryController::class, 'handOver']);
 $r->get('/fichiers/colis/{id}', [ParcelController::class, 'file']);
 
 // ---- Dossiers d'expédition ----

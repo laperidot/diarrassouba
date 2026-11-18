@@ -25,9 +25,74 @@
       }
       f.dataset.sending = '1';
       $$('button:not([type="button"])', f).forEach((b) => { b.setAttribute('aria-disabled', 'true'); });
-      setTimeout(() => { f.dataset.sending = ''; $$('button', f).forEach((b) => b.removeAttribute('aria-disabled')); }, 8000);
+      if (e.submitter && e.submitter.classList.contains('btn')) e.submitter.classList.add('is-busy');
+      try { sessionStorage.setItem('di-scroll', JSON.stringify({ p: location.pathname, y: window.scrollY, t: Date.now() })); } catch (err) { /* stockage indisponible */ }
+      setTimeout(() => { f.dataset.sending = ''; $$('button', f).forEach((b) => { b.removeAttribute('aria-disabled'); b.classList.remove('is-busy'); }); }, 8000);
     }
+    if (!f.target) loading();
   });
+
+  /* ---------- Fluidité : barre de chargement entre deux pages ---------- */
+  const bar = document.createElement('div');
+  bar.id = 'nav-progress';
+  bar.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(bar);
+  let barTimer;
+  // Téléchargement (PDF) ou réponse très lente : la barre ne reste pas affichée indéfiniment.
+  function loading() { bar.classList.remove('on'); void bar.offsetWidth; bar.classList.add('on'); clearTimeout(barTimer); barTimer = setTimeout(() => bar.classList.remove('on'), 12000); }
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest('a[href]');
+    if (!a || a.target || a.hasAttribute('download')) return;
+    const u = new URL(a.href, location.href);
+    if (u.origin !== location.origin || (u.pathname === location.pathname && u.search === location.search)) return;
+    loading();
+  });
+  // Retour arrière (page restaurée du cache) : rien ne doit rester « en cours ».
+  window.addEventListener('pageshow', () => {
+    bar.classList.remove('on');
+    $$('form[data-sending="1"]').forEach((f) => { f.dataset.sending = ''; });
+    $$('.is-busy, [aria-disabled="true"]').forEach((b) => { b.classList.remove('is-busy'); if (b.tagName === 'BUTTON') b.removeAttribute('aria-disabled'); });
+  });
+
+  /* ---------- Filtres : appliqués dès qu'on change une liste, une date ou une case ---------- */
+  $$('form.toolbar[method="get"]').forEach((f) => {
+    f.addEventListener('change', (e) => {
+      if (!e.target.matches('select, input[type="date"], input[type="checkbox"]')) return;
+      if (f.requestSubmit) f.requestSubmit(); else f.submit();
+    });
+  });
+
+  /* ---------- Après un enregistrement : on reste au même endroit de la page ---------- */
+  const firstError = $('[aria-invalid="true"]');
+  if (firstError) {
+    // Formulaire refusé : on va droit au premier champ à corriger.
+    const d = firstError.closest('details');
+    if (d) d.open = true;
+    const goToError = () => { firstError.scrollIntoView({ block: 'center' }); firstError.focus({ preventScroll: true }); };
+    goToError();
+    // Pendant la transition entre pages, le navigateur peut ignorer le focus : on le redonne une fois la page affichée.
+    window.addEventListener('load', () => setTimeout(() => { if (document.activeElement !== firstError) goToError(); }, 50));
+  } else {
+    try {
+      const s = JSON.parse(sessionStorage.getItem('di-scroll') || 'null');
+      sessionStorage.removeItem('di-scroll');
+      if (s && s.p === location.pathname && !location.hash && Date.now() - s.t < 20000 && s.y > 120) {
+        window.scrollTo(0, s.y);
+        // Le message de confirmation est en haut de page : on le montre aussi en bas d'écran.
+        const flashes = $$('#contenu > .flash');
+        if (flashes.length) {
+          const stack = document.createElement('div');
+          stack.className = 'toast-stack';
+          flashes.forEach((fl) => stack.appendChild(fl.cloneNode(true)));
+          stack.addEventListener('click', () => stack.remove());
+          document.body.appendChild(stack);
+          setTimeout(() => stack.classList.add('leaving'), 5000);
+          setTimeout(() => stack.remove(), 5400);
+        }
+      }
+    } catch (err) { /* stockage indisponible : comportement normal */ }
+  }
 
   /* ---------- Impression ---------- */
   $$('[data-print]').forEach((b) => b.addEventListener('click', () => window.print()));
@@ -141,6 +206,22 @@
     });
     [w, rate, cur].forEach((el) => el && el.addEventListener('input', update));
     if (cur) cur.addEventListener('change', update);
+    // Nouveau colis : la grille suit le trajet choisi, tant que l'agent n'en a pas choisi une lui-même.
+    if (tariff && pf.hasAttribute('data-auto-tariff')) {
+      const oc = $('#origin_country', pf), dc = $('#destination_country', pf);
+      let manual = false;
+      tariff.addEventListener('change', (e) => { if (e.isTrusted) manual = true; });
+      const pick = () => {
+        if (manual) return;
+        const match = [...tariff.options].filter((o) => o.dataset.origin === oc.value && o.dataset.destination === dc.value)
+          .sort((a, b) => parseNum(a.dataset.rate) - parseNum(b.dataset.rate))[0];
+        tariff.value = match ? match.value : '';
+        if (!match) rate.value = '';
+        tariff.dispatchEvent(new Event('change'));
+      };
+      [oc, dc].forEach((el) => el && el.addEventListener('change', pick));
+      if (tariff.value && !rate.value) tariff.dispatchEvent(new Event('change'));
+    }
     update();
   }
 
@@ -158,12 +239,14 @@
   }
 
   /* ---------- Partage (Web Share API, sinon copie du lien) ---------- */
-  const share = async (url, title) => {
+  // Avec un message (relevé), le texte contient déjà le lien : on partage le texte seul.
+  const share = async (url, title, text) => {
     if (navigator.share) {
-      try { await navigator.share({ title, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
+      try { await navigator.share(text ? { title, text } : { title, url }); return; } catch (e) { if (e.name === 'AbortError') return; }
     }
-    try { await navigator.clipboard.writeText(url); window.alert('Lien copié :\n' + url); }
-    catch (e) { window.prompt('Copiez ce lien :', url); }
+    const what = text || url;
+    try { await navigator.clipboard.writeText(what); window.alert((text ? 'Message copié, à coller dans WhatsApp, un SMS ou un e-mail :\n\n' : 'Lien copié :\n') + what); }
+    catch (e) { window.prompt('Copiez ce ' + (text ? 'message' : 'lien') + ' :', what); }
   };
   document.addEventListener('click', async (e) => {
     const direct = e.target.closest('[data-share-url]');
@@ -176,7 +259,13 @@
       const r = await fetch(b.dataset.shareEndpoint, { method: 'POST', headers: { Accept: 'application/json', 'X-CSRF-Token': csrf() }, credentials: 'same-origin' });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Partage impossible');
-      await share(data.url, data.title + ' (lien valable ' + data.hours + ' h)');
+      if (b.dataset.shareVia === 'whatsapp') {
+        const wa = 'https://wa.me/' + (data.phone || '') + '?text=' + encodeURIComponent(data.text || data.url);
+        const w = window.open(wa, '_blank');
+        if (w) w.opener = null; else window.location.href = wa;
+        return;
+      }
+      await share(data.url, data.title + ' (lien valable ' + data.hours + ' h)', data.text);
     } catch (err) { window.alert(err.message || 'Partage impossible.'); }
     finally { b.removeAttribute('aria-disabled'); }
   });

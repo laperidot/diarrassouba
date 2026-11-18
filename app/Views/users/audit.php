@@ -1,7 +1,7 @@
-<div class="page-head"><h1>Journal des opérations</h1><p class="lede">Connexions, créations, changements de statut, opérations financières. Les 200 dernières entrées correspondant au filtre.</p></div>
+<div class="page-head"><h1>Historique des actions</h1><p class="lede">Qui a fait quoi et quand : connexions, colis, vols, factures, paiements. Les 200 dernières actions.</p></div>
 <form class="toolbar" method="get">
   <input name="action" value="<?= e($f['action']) ?>" placeholder="Action (ex. payment, invoice.cancelled)" aria-label="Action">
-  <select name="type" aria-label="Type"><option value="">Tous les objets</option><?php foreach (['parcel' => 'Colis', 'shipment' => 'Dossier', 'invoice' => 'Facture', 'payment' => 'Paiement', 'expense' => 'Dépense', 'delivery' => 'Livraison', 'client' => 'Client', 'user' => 'Utilisateur', 'tariff' => 'Tarif'] as $k => $l): ?><option value="<?= $k ?>"<?= selected($f['entity_type'], $k) ?>><?= e($l) ?></option><?php endforeach ?></select>
+  <select name="type" aria-label="Type"><option value="">Tous les objets</option><?php foreach (['parcel' => 'Colis', 'shipment' => 'Vol', 'invoice' => 'Facture', 'payment' => 'Paiement', 'expense' => 'Dépense', 'delivery' => 'Livraison', 'client' => 'Client', 'user' => 'Utilisateur', 'tariff' => 'Tarif'] as $k => $l): ?><option value="<?= $k ?>"<?= selected($f['entity_type'], $k) ?>><?= e($l) ?></option><?php endforeach ?></select>
   <input name="id" value="<?= e($f['entity_id']) ?>" placeholder="N° interne" inputmode="numeric" aria-label="Identifiant" style="max-width:120px">
   <button class="btn">Filtrer</button>
 </form>

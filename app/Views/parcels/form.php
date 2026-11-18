@@ -8,7 +8,17 @@ $editing = $parcel !== null;
 $v = fn ($k, $d = '') => old($k, $p[$k] ?? $d);
 $currency = old('currency', $p['currency'] ?? Config::get('DEFAULT_CURRENCY', 'XOF'));
 $prefSender = !$editing && !empty($_GET['expediteur']) ? (new App\Services\ClientService())->find((int) $_GET['expediteur']) : null;
+// « Autre colis » après un enregistrement : même trajet que le précédent.
+$prefDest = !$editing && isset(Domain::COUNTRIES[$_GET['destination'] ?? '']) ? $_GET['destination'] : 'CI';
+$prefCity = !$editing && isset($_GET['ville']) ? mb_substr(trim((string) $_GET['ville']), 0, 80) : (Domain::COUNTRY_CITY[$prefDest] ?? 'Abidjan');
 $billingLocked = $billingLocked ?? false;
+// Nouveau colis : la grille du trajet (la moins chère) est choisie d'office, l'agent n'a rien à sélectionner.
+$autoTariff = '';
+if (!$editing && !isset($_SESSION['_old']['tariff_id'])) {
+    $route = array_values(array_filter($tariffs, fn ($t) => $t['origin_country'] === $v('origin_country', 'EG') && $t['destination_country'] === $v('destination_country', $prefDest)));
+    usort($route, fn ($a, $b) => (int) $a['rate_per_kg_minor'] <=> (int) $b['rate_per_kg_minor']);
+    $autoTariff = $route ? (string) $route[0]['id'] : '';
+}
 
 $picker = function (string $role, string $label, ?array $chosen) {
     $idVal = old($role . '_id', $chosen['id'] ?? '');
@@ -42,7 +52,7 @@ $recipientChosen = $editing ? ['id' => $p['recipient_id'], 'name' => $p['recipie
   <div><a class="crumb" href="<?= e(url($editing ? 'colis/' . $p['id'] : 'colis')) ?>">← <?= $editing ? e($p['tracking_code']) : 'Colis' ?></a><h1><?= e($title) ?></h1></div>
 </div>
 
-<form class="form" method="post" enctype="multipart/form-data" action="<?= e(url($editing ? 'colis/' . $p['id'] : 'colis')) ?>" data-parcel-form>
+<form class="form" method="post" enctype="multipart/form-data" action="<?= e(url($editing ? 'colis/' . $p['id'] : 'colis')) ?>" data-parcel-form<?= $editing ? '' : ' data-auto-tariff' ?>>
   <?= csrf_field() ?>
   <div class="panel">
     <fieldset>
@@ -73,8 +83,8 @@ $recipientChosen = $editing ? ['id' => $p['recipient_id'], 'name' => $p['recipie
       <div class="row row-2">
         <div class="field"><label for="origin_country">Départ</label><select id="origin_country" name="origin_country" data-city-target="origin_city"><?php foreach (Domain::COUNTRIES as $k => $l): ?><option value="<?= $k ?>" data-city="<?= e(Domain::COUNTRY_CITY[$k] ?? '') ?>"<?= selected($v('origin_country', 'EG'), $k) ?>><?= e($l) ?></option><?php endforeach ?></select></div>
         <div class="field"><label for="origin_city">Ville de départ</label><input id="origin_city" name="origin_city" value="<?= $v('origin_city', 'Le Caire') ?>"></div>
-        <div class="field"><label for="destination_country">Destination</label><select id="destination_country" name="destination_country" data-city-target="destination_city"><?php foreach (Domain::COUNTRIES as $k => $l): ?><option value="<?= $k ?>" data-city="<?= e(Domain::COUNTRY_CITY[$k] ?? '') ?>"<?= selected($v('destination_country', 'CI'), $k) ?>><?= e($l) ?></option><?php endforeach ?></select></div>
-        <div class="field"><label for="destination_city">Ville d’arrivée</label><input id="destination_city" name="destination_city" value="<?= $v('destination_city', 'Abidjan') ?>"></div>
+        <div class="field"><label for="destination_country">Destination</label><select id="destination_country" name="destination_country" data-city-target="destination_city"><?php foreach (Domain::COUNTRIES as $k => $l): ?><option value="<?= $k ?>" data-city="<?= e(Domain::COUNTRY_CITY[$k] ?? '') ?>"<?= selected($v('destination_country', $prefDest), $k) ?>><?= e($l) ?></option><?php endforeach ?></select></div>
+        <div class="field"><label for="destination_city">Ville d’arrivée</label><input id="destination_city" name="destination_city" value="<?= $v('destination_city', $prefCity) ?>"></div>
       </div>
       <?php if (!$editing && isset($openShipments)): $chosenShip = (string) old('shipment_id', ''); ?>
       <div class="field flight-pick" data-flight-pick>
@@ -94,43 +104,43 @@ $recipientChosen = $editing ? ['id' => $p['recipient_id'], 'name' => $p['recipie
 
   <div class="panel">
     <fieldset style="margin-bottom:0">
-      <legend>Tarif</legend>
+      <legend>Prix</legend>
       <?php if ($billingLocked): ?>
-        <div class="flash flash-info"><?= icon('invoice') ?><span>Ce colis est facturé : poids, tarif et devise sont figés. Retirez-le du brouillon ou annulez la facture pour les modifier.</span></div>
+        <div class="flash flash-info"><?= icon('invoice') ?><span>Ce colis est déjà sur une facture : le poids et le prix ne peuvent plus changer. Pour les corriger, retirez-le de la facture (si elle n’est pas encore validée) ou annulez la facture.</span></div>
       <?php endif ?>
       <div class="field">
-        <label for="tariff_id">Grille tarifaire</label>
+        <label for="tariff_id">Prix au kilo</label>
         <select id="tariff_id" name="tariff_id"<?= $billingLocked ? ' disabled' : '' ?>>
-          <option value="">Tarif libre</option>
+          <option value="">Autre prix (à taper)</option>
           <?php foreach ($tariffs as $t): ?>
-            <option value="<?= (int) $t['id'] ?>" data-rate="<?= e(Money::input((int) $t['rate_per_kg_minor'], $t['currency'])) ?>" data-currency="<?= e($t['currency']) ?>" data-min="<?= (int) $t['min_billable_g'] ?>"<?= selected($v('tariff_id'), $t['id']) ?>><?= e($t['name']) ?> : <?= e(money((int) $t['rate_per_kg_minor'], $t['currency'])) ?>/kg</option>
+            <option value="<?= (int) $t['id'] ?>" data-rate="<?= e(Money::input((int) $t['rate_per_kg_minor'], $t['currency'])) ?>" data-currency="<?= e($t['currency']) ?>" data-min="<?= (int) $t['min_billable_g'] ?>" data-origin="<?= e($t['origin_country']) ?>" data-destination="<?= e($t['destination_country']) ?>"<?= selected($v('tariff_id', $autoTariff), $t['id']) ?>><?= e($t['name']) ?> : <?= e(money((int) $t['rate_per_kg_minor'], $t['currency'])) ?>/kg</option>
           <?php endforeach ?>
         </select>
         <?php if ($billingLocked): ?><input type="hidden" name="tariff_id" value="<?= e((string) ($p['tariff_id'] ?? '')) ?>"><?php endif ?>
       </div>
       <div class="row row-2">
-        <div class="field"><label for="rate">Prix par kilogramme</label><input id="rate" name="rate" inputmode="decimal" value="<?= old('rate', isset($p['rate_per_kg_minor']) ? Money::input((int) $p['rate_per_kg_minor'], $p['currency']) : '') ?>"<?= invalid('rate') ?><?= ($billingLocked || !can('parcels.finance')) ? ' readonly' : '' ?>><?= field_error('rate') ?><?php if (!can('parcels.finance')): ?><span class="hint">Le prix de la grille choisie s’applique.</span><?php endif ?></div>
-        <div class="field"><label for="currency">Devise</label>
+        <div class="field"><label for="rate">Prix d’un kilo</label><input id="rate" name="rate" inputmode="decimal" value="<?= old('rate', isset($p['rate_per_kg_minor']) ? Money::input((int) $p['rate_per_kg_minor'], $p['currency']) : '') ?>"<?= invalid('rate') ?><?= ($billingLocked || !can('parcels.finance')) ? ' readonly' : '' ?>><?= field_error('rate') ?><?php if (!can('parcels.finance')): ?><span class="hint">Le prix choisi au-dessus s’applique.</span><?php endif ?></div>
+        <div class="field"><label for="currency">Monnaie</label>
           <select id="currency" name="currency"<?= $billingLocked ? ' disabled' : '' ?>><?php foreach (Domain::CURRENCIES as $k => $cfg): ?><option value="<?= $k ?>" data-exp="<?= $cfg['exp'] ?>"<?= selected($currency, $k) ?>><?= e($cfg['label']) ?></option><?php endforeach ?></select>
           <?php if ($billingLocked): ?><input type="hidden" name="currency" value="<?= e($currency) ?>"><?php endif ?>
           <?= field_error('currency') ?>
         </div>
       </div>
       <div class="calc" data-calc data-step="<?= App\Core\Config::int('BILLING_WEIGHT_STEP_G', 100) ?>" aria-live="polite">
-        <span>Poids facturé <strong data-calc-weight>—</strong></span>
-        <span>Montant <strong data-calc-amount>—</strong></span>
+        <span>Poids compté <strong data-calc-weight>—</strong></span>
+        <span>Prix à payer <strong data-calc-amount>—</strong></span>
         <span class="small muted">Calcul définitif fait à l’enregistrement.</span>
       </div>
-      <div class="field"><label for="payment_terms">Modalité de paiement</label><select id="payment_terms" name="payment_terms"><option value="">Selon la fiche client</option><?php foreach (Domain::PAYMENT_TERMS as $k => $l): ?><option value="<?= $k ?>"<?= selected($v('payment_terms'), $k) ?>><?= e($l) ?></option><?php endforeach ?></select></div>
+      <div class="field"><label for="payment_terms">Comment le client paie</label><select id="payment_terms" name="payment_terms"><option value="">Comme d’habitude pour ce client</option><?php foreach (Domain::PAYMENT_TERMS as $k => $l): ?><option value="<?= $k ?>"<?= selected($v('payment_terms'), $k) ?>><?= e($l) ?></option><?php endforeach ?></select></div>
     </fieldset>
   </div>
 
   <div class="panel">
     <fieldset style="margin-bottom:0">
-      <legend>Compléments</legend>
+      <legend>En plus (facultatif)</legend>
       <div class="field"><label for="received_at">Reçu au comptoir le</label><input id="received_at" name="received_at" type="datetime-local" value="<?= old('received_at', utc_to_local_input($p['received_at'] ?? null)) ?>"><span class="hint">Laissez vide pour maintenant.</span></div>
-      <label class="check"><input type="checkbox" name="public_weight" value="1"<?= checked((bool) old('public_weight', $editing ? (string) $p['public_weight'] : '1')) ?>> Afficher le poids sur la page publique de suivi</label>
-      <div class="field"><label for="internal_notes">Observations internes</label><textarea id="internal_notes" name="internal_notes" placeholder="État de l’emballage, objets fragiles…"><?= $v('internal_notes') ?></textarea><span class="hint">Jamais visibles par le client.</span></div>
+      <label class="check"><input type="checkbox" name="public_weight" value="1"<?= checked((bool) old('public_weight', $editing ? (string) $p['public_weight'] : '1')) ?>> Montrer le poids au client sur la page de suivi</label>
+      <div class="field"><label for="internal_notes">Note pour l’équipe</label><textarea id="internal_notes" name="internal_notes" placeholder="État de l’emballage, objets fragiles…"><?= $v('internal_notes') ?></textarea><span class="hint">Le client ne la voit jamais.</span></div>
       <?php if (!$editing): ?>
       <div class="field"><label for="attachment">Photo ou document <span class="muted">(facultatif)</span></label><input id="attachment" name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment"><span class="hint">JPG, PNG, WebP ou PDF, 5 Mo maximum.</span></div>
       <?php endif ?>

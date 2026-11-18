@@ -19,7 +19,7 @@ final class ShipmentController extends Controller
         $f = ['q' => Request::query('q'), 'status' => Request::query('statut', 'active')];
         $page = $this->page();
         return $this->view('shipments/index', [
-            'title' => 'Dossiers d’expédition',
+            'title' => 'Vols',
             'shipments' => $svc->list($f, 30, ($page - 1) * 30),
             'total' => $svc->count($f), 'f' => $f, 'page' => $page,
         ]);
@@ -31,14 +31,14 @@ final class ShipmentController extends Controller
         // Depuis la fiche d'un colis : la destination du vol est préremplie.
         $dest = Request::query('destination');
         $preset = isset(Domain::COUNTRIES[$dest]) ? ['destination_country' => $dest, 'destination_city' => Domain::COUNTRY_CITY[$dest] ?? ''] : [];
-        return $this->view('shipments/form', ['title' => 'Nouveau dossier', 'shipment' => null, 'preset' => $preset]);
+        return $this->view('shipments/form', ['title' => 'Nouveau vol', 'shipment' => null, 'preset' => $preset]);
     }
 
     public function store(): never
     {
         Auth::require('shipments.edit');
         $id = $this->attempt(fn () => (new ShipmentService())->create(Request::all()), 'dossiers/nouveau');
-        Session::flash('success', 'Dossier créé. Ajoutez-y les colis qui partent sur ce vol.');
+        Session::flash('success', 'Vol créé. Mettez-y maintenant les colis qui partent dans cet avion.');
         $this->redirect('dossiers/' . $id);
     }
 
@@ -49,7 +49,7 @@ final class ShipmentController extends Controller
         $s = $svc->find((int) $id);
         $this->notFoundUnless($s);
         return $this->view('shipments/show', [
-            'title' => 'Dossier ' . $s['reference'],
+            'title' => 'Vol ' . $s['reference'],
             'shipment' => $s,
             'parcels' => $svc->parcels((int) $id),
             'candidates' => Auth::can('shipments.load') && $s['status'] === 'preparation' ? $svc->candidates((int) $id) : [],
@@ -64,14 +64,14 @@ final class ShipmentController extends Controller
         Auth::require('shipments.edit');
         $s = (new ShipmentService())->find((int) $id);
         $this->notFoundUnless($s);
-        return $this->view('shipments/form', ['title' => 'Modifier le dossier', 'shipment' => $s]);
+        return $this->view('shipments/form', ['title' => 'Modifier le vol', 'shipment' => $s]);
     }
 
     public function update(string $id): never
     {
         Auth::require('shipments.edit');
         $this->attempt(fn () => (new ShipmentService())->update((int) $id, Request::all()), "dossiers/$id/modifier");
-        Session::flash('success', 'Dossier mis à jour.');
+        Session::flash('success', 'Vol mis à jour.');
         $this->redirect('dossiers/' . $id);
     }
 
@@ -103,11 +103,11 @@ final class ShipmentController extends Controller
         }, $back);
         if ($result['added']) {
             $s = (new ShipmentService())->get((int) $id);
-            Session::flash('success', ($fromParcel ? 'Colis mis dans le vol ' . $s['reference'] : pluralize($result['added'], 'colis ajouté', 'colis ajoutés') . ' au dossier')
-                . ' — total : ' . pluralize((int) $s['parcel_count'], 'colis', 'colis') . ', ' . kg((int) $s['total_weight_g']) . '.');
+            Session::flash('success', ($fromParcel ? 'Colis mis dans le vol ' . $s['reference'] : pluralize($result['added'], 'colis ajouté', 'colis ajoutés') . ' dans le vol')
+                . ' — en tout : ' . pluralize((int) $s['parcel_count'], 'colis', 'colis') . ', ' . kg((int) $s['total_weight_g']) . '.');
         }
         foreach ($result['skipped'] as $c => $why) {
-            Session::flash('warning', "$c non ajouté : $why.");
+            Session::flash('warning', "$c pas ajouté : $why.");
         }
         if ($fromParcel) {
             $this->redirect('colis/' . $ids[0]);
@@ -119,7 +119,7 @@ final class ShipmentController extends Controller
     {
         Auth::require('shipments.edit');
         $this->attempt(fn () => (new ShipmentService())->removeParcel((int) $id, (int) $pid), "dossiers/$id");
-        Session::flash('success', 'Colis retiré du dossier.');
+        Session::flash('success', 'Colis retiré du vol.');
         $this->redirect('dossiers/' . $id);
     }
 
@@ -136,11 +136,11 @@ final class ShipmentController extends Controller
         $s = (new ShipmentService())->get((int) $id);
         $msg = $s['reference'] . ' : ' . mb_strtolower(Domain::SHIPMENT_STATUSES[$to] ?? $to) . '.';
         if ($result['updated']) {
-            $msg .= ' ' . pluralize($result['updated'], 'colis mis à jour', 'colis mis à jour') . '.';
+            $msg .= ' ' . pluralize($result['updated'], 'colis a suivi', 'colis ont suivi') . '.';
         }
         Session::flash('success', $msg);
         foreach ($result['skipped'] as $code => $why) {
-            Session::flash('warning', "$code inchangé : $why.");
+            Session::flash('warning', "$code n’a pas bougé : $why.");
         }
         $this->redirect($back);
     }

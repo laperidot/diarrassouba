@@ -41,6 +41,26 @@ final class MiscController extends Controller
         $this->json(['found' => true, 'url' => url('colis/' . $parcel['id']), 'code' => $parcel['tracking_code']]);
     }
 
+    /**
+     * Règles de préchargement (Chrome, Edge) : la page visée est demandée dès le survol
+     * ou l'appui sur un lien, son ouverture paraît instantanée. Seules des pages sans effet
+     * sont concernées : ni fichiers, ni PDF, ni liens publics limités en nombre de visites.
+     */
+    public function speculationRules(): never
+    {
+        header('Content-Type: application/speculationrules+json');
+        header('Cache-Control: public, max-age=3600');
+        $skip = ['/suivi', '/partage', '/fichiers', '/pdf', '/etiquette', '/manifeste', '/releve', '/recu', '/api/', '/deconnexion', '/connexion'];
+        echo json_encode(['prefetch' => [[
+            'where' => ['and' => [
+                ['href_matches' => '/*'],
+                ['not' => ['selector_matches' => '[target], [download], [data-no-prefetch], ' . implode(', ', array_map(fn ($s) => "[href*='$s']", $skip))]],
+            ]],
+            'eagerness' => 'moderate',
+        ]]], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
     public function notifications(): string
     {
         Auth::require('dashboard.view');
@@ -70,11 +90,27 @@ final class MiscController extends Controller
         if (!RateLimiter::hit('share', Request::ip(), 60, 600)) {
             throw new HttpException(429);
         }
-        if (!ctype_digit($id) || !ctype_digit($exp) || !in_array($type, ['facture', 'recu'], true)
+        if (!ctype_digit($id) || !ctype_digit($exp) || !in_array($type, ['facture', 'recu', 'releve'], true)
             || !Signer::verify($type, (int) $id, (int) $exp, $sig)) {
             throw new HttpException(404, 'Ce lien de partage est invalide ou a expiré. Demandez un nouveau lien à l’agence.');
         }
         $pdf = new PdfService();
+        if ($type === 'releve') {
+            $client = (new \App\Services\ClientService())->find((int) $id) ?? throw new HttpException(404);
+            $st = (new InvoiceService())->statement((int) $id);
+            if (Request::query('pdf') === '1') {
+                $this->sendPdf($pdf->statement($client, $st), 'releve-' . $client['code'] . '.pdf');
+            }
+            header('Cache-Control: private, no-store');
+            header('X-Robots-Tag: noindex');
+            echo \App\Core\View::render('tracking/statement', [
+                'client' => $client, 'st' => $st, 'pdfUrl' => url(Request::path(), ['pdf' => '1']),
+                'payments' => (new \App\Services\ClientService())->statementPayments((int) $id),
+                'invoices' => (new \App\Services\ClientService())->statementInvoices((int) $id),
+                'role' => (new \App\Services\ClientService())->role((int) $id),
+            ], null);
+            exit;
+        }
         if ($type === 'facture') {
             $svc = new InvoiceService();
             $inv = $svc->find((int) $id) ?? throw new HttpException(404);

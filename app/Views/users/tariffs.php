@@ -1,5 +1,5 @@
 <?php use App\Core\Domain; use App\Core\Money; ?>
-<div class="page-head"><h1>Tarifs au kilogramme</h1><p class="lede">Proposés à l’enregistrement d’un colis. Une modification ne change pas les colis déjà enregistrés : chaque colis garde le tarif appliqué le jour de sa prise en charge.</p></div>
+<div class="page-head"><h1>Prix au kilo</h1><p class="lede">Le bon prix est choisi tout seul quand on enregistre un colis. Changer un prix ne change pas les colis déjà enregistrés.</p></div>
 <?php if ($tariffs): ?>
 <div class="stack">
 <?php foreach ($tariffs as $t): ?>
@@ -16,9 +16,9 @@
 <?php endforeach ?>
 </div>
 <?php else: ?>
-  <div class="panel empty"><h3>Aucun tarif</h3><p>Créez au moins un tarif Égypte → Côte d’Ivoire pour accélérer l’enregistrement des colis.</p></div>
+  <div class="panel empty"><h3>Aucun prix</h3><p>Ajoutez au moins un prix Égypte → Côte d’Ivoire : il sera choisi tout seul à l’enregistrement des colis.</p></div>
 <?php endif ?>
 <section class="panel" style="margin-top:16px">
-  <h2 style="margin-bottom:12px">Nouveau tarif</h2>
+  <h2 style="margin-bottom:12px">Ajouter un prix</h2>
   <?= App\Core\View::partial('users/_tariff_form', ['t' => null]) ?>
 </section>

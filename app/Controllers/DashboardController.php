@@ -23,7 +23,7 @@ final class DashboardController extends Controller
         [$from, $to, $label] = $svc->range($period, Request::query('du'), Request::query('au'));
         $finance = Auth::can('dashboard.finance');
         return $this->view('dashboard/index', [
-            'title' => 'Tableau de bord',
+            'title' => 'Accueil',
             'period' => $period,
             'periodLabel' => $label,
             'du' => Request::query('du'),
@@ -36,8 +36,8 @@ final class DashboardController extends Controller
             'activity' => $svc->recentActivity(8),
             'payments' => $finance ? $svc->recentPayments(6) : [],
             'attention' => $svc->attention($finance),
-            // Raccourci « Charger le vol » : le prochain dossier en préparation
-            'loading' => Auth::can('shipments.load') ? ((new \App\Services\ShipmentService())->list(['status' => 'preparation'], 1)[0] ?? null) : null,
+            // Raccourci « Charger le vol » : le dossier en préparation qui part le plus tôt
+            'loading' => Auth::can('shipments.load') ? (new \App\Services\ShipmentService())->nextToLoad() : null,
             // Vols en cours : suivi et changement de statut sans quitter le tableau de bord
             'flights' => Auth::can('shipments.view') ? (new \App\Services\ShipmentService())->list(['status' => 'active'], 6) : [],
         ]);

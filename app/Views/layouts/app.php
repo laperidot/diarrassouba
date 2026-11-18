@@ -42,27 +42,27 @@ $link = fn (string $href, string $icon, string $label, string ...$prefixes) => '
   <div class="side-route" aria-hidden="true"><span>CAI</span><i></i><?= icon('plane') ?><i></i><span>ABJ</span></div>
 
   <nav class="side-nav">
-    <p class="side-group">Opérations</p>
-    <?php if (!$courier): ?><?= $link('tableau-de-bord', 'home', 'Tableau de bord') ?><?php endif ?>
+    <p class="side-group">Au quotidien</p>
+    <?php if (!$courier): ?><?= $link('tableau-de-bord', 'home', 'Accueil') ?><?php endif ?>
     <?php if (can('parcels.view') && !$courier): ?><?= $link('colis', 'box', 'Colis') ?><?php endif ?>
     <?php if (can('parcels.view')): ?><?= $link('scanner', 'scan', 'Scanner') ?><?php endif ?>
-    <?php if (can('shipments.view')): ?><?= $link('dossiers', 'plane', 'Dossiers de vol') ?><?php endif ?>
-    <?php if (can('deliveries.view')): ?><?= $link('livraisons', 'truck', $courier ? 'Mes livraisons' : 'Livraisons') ?><?php endif ?>
+    <?php if (can('shipments.view')): ?><?= $link('dossiers', 'plane', 'Vols') ?><?php endif ?>
+    <?php if (can('deliveries.view')): ?><?= $link('livraisons', 'truck', $courier ? 'Mes livraisons' : 'Remises et livraisons') ?><?php endif ?>
     <?php if (can('clients.view')): ?><?= $link('clients', 'users', 'Clients') ?><?php endif ?>
 
     <?php if (can('invoices.view') || can('expenses.view')): ?>
-    <p class="side-group">Finances</p>
+    <p class="side-group">Argent</p>
     <?php if (can('invoices.view')): ?><?= $link('factures', 'invoice', 'Factures') ?><?= $link('paiements', 'cash', 'Paiements') ?><?php endif ?>
     <?php if (can('expenses.view')): ?><?= $link('depenses', 'wallet', 'Dépenses') ?><?php endif ?>
     <?php endif ?>
 
-    <p class="side-group">Station</p>
+    <p class="side-group">Autres</p>
     <a class="side-link" href="<?= e(url('notifications')) ?>" title="Notifications"<?= $isActive('/notifications') ?>><?= icon('bell') ?><span>Notifications</span><?php if ($unread): ?><b class="side-count"><?= $unread > 99 ? '99+' : $unread ?></b><?php endif ?></a>
     <?php if (can('users.manage')): ?><?= $link('utilisateurs', 'users', 'Utilisateurs') ?><?php endif ?>
-    <?php if (can('tariffs.manage')): ?><?= $link('tarifs', 'tag', 'Tarifs au kilo') ?><?php endif ?>
-    <?php if (can('audit.view')): ?><?= $link('journal', 'shield', 'Journal') ?><?php endif ?>
+    <?php if (can('tariffs.manage')): ?><?= $link('tarifs', 'tag', 'Prix au kilo') ?><?php endif ?>
+    <?php if (can('audit.view')): ?><?= $link('journal', 'shield', 'Historique des actions') ?><?php endif ?>
     <?php if (can('settings.manage')): ?><?= $link('parametres', 'settings', 'Paramètres') ?><?php endif ?>
-    <a class="side-link" href="<?= e(url('suivi')) ?>" title="Suivi public" target="_blank" rel="noopener"><?= icon('route') ?><span>Suivi public</span></a>
+    <a class="side-link" href="<?= e(url('suivi')) ?>" title="Page de suivi pour les clients" target="_blank" rel="noopener"><?= icon('route') ?><span>Suivi client</span></a>
   </nav>
 
   <div class="side-foot">
@@ -87,7 +87,7 @@ $link = fn (string $href, string $icon, string $label, string ...$prefixes) => '
       <input id="top-q" name="q" type="search" placeholder="Code DI-…, client ou téléphone" autocomplete="off">
     </form>
     <?php endif ?>
-    <div class="clocks desk-only" aria-label="Heure locale des escales">
+    <div class="clocks desk-only" aria-label="Heure à Abidjan et au Caire">
       <span class="clock"><b>ABJ</b><time data-clock="Africa/Abidjan"><?= $clock('Africa/Abidjan') ?></time></span>
       <span class="clock"><b>CAI</b><time data-clock="Africa/Cairo"><?= $clock('Africa/Cairo') ?></time></span>
     </div>

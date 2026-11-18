@@ -311,16 +311,18 @@ test('Paiements partiels et calcul du solde', function () use ($payments, $invoi
     $payments->record($id, ['amount' => '70000', 'method' => 'wave', 'reference' => 'WV-1', 'form_token' => token()]);
     eq($invoices->get($id)['status'], 'paid');
 });
-test('Trop-perçu, montant nul, double envoi et référence dupliquée refusés', function () use ($payments, $payInvoice, $db) {
+test('Trop-perçu, montant nul, double envoi et référence dupliquée refusés ; référence facultative', function () use ($payments, $payInvoice, $db) {
     $id = $payInvoice();
     throws(ValidationException::class, fn () => $payments->record($id, ['amount' => '100001', 'method' => 'cash', 'form_token' => token()]));
     throws(ValidationException::class, fn () => $payments->record($id, ['amount' => '0', 'method' => 'cash', 'form_token' => token()]));
-    throws(ValidationException::class, fn () => $payments->record($id, ['amount' => '10', 'method' => 'orange_money', 'form_token' => token()]), 'référence obligatoire');
+    // Référence facultative : deux paiements Mobile Money sans référence ne se gênent pas
+    $payments->record($id, ['amount' => '10', 'method' => 'orange_money', 'form_token' => token()]);
+    $payments->record($id, ['amount' => '10', 'method' => 'orange_money', 'reference' => '  ', 'form_token' => token()]);
     $t = token();
     $payments->record($id, ['amount' => '1000', 'method' => 'orange_money', 'reference' => 'OM-X', 'form_token' => $t]);
     throws(BusinessException::class, fn () => $payments->record($id, ['amount' => '1000', 'method' => 'orange_money', 'reference' => 'OM-Y', 'form_token' => $t]));
     throws(ValidationException::class, fn () => $payments->record($id, ['amount' => '1000', 'method' => 'orange_money', 'reference' => 'OM-X', 'form_token' => token()]));
-    eq((int) $db->value('SELECT COUNT(*) FROM payments WHERE invoice_id = ?', [$id]), 1);
+    eq((int) $db->value('SELECT COUNT(*) FROM payments WHERE invoice_id = ?', [$id]), 3);
 });
 test('Paiement refusé sur brouillon ; annulation de paiement tracée et unique', function () use ($payments, $invoices, $payInvoice, $newParcel, $recipient) {
     $draft = $invoices->createDraft($recipient, [$newParcel()]);
@@ -334,6 +336,40 @@ test('Paiement refusé sur brouillon ; annulation de paiement tracée et unique'
     eq((int) $inv['paid_minor'], 0);
     throws(BusinessException::class, fn () => $payments->reverse($pid, 'Deuxième fois'));
     eq(count($payments->forInvoice($id)), 2, 'paiement d’origine conservé + contrepassation');
+});
+
+test('Relevé de compte : solde progressif = factures − paiements ; PDF', function () use ($payments, $invoices, $payInvoice, $recipient, $db) {
+    $id = $payInvoice();
+    $payments->record($id, ['amount' => '30000', 'method' => 'cash', 'form_token' => token()]);
+    $st = $invoices->statement($recipient);
+    $a = $st['accounts']['XOF'];
+    $expected = (int) $db->value("SELECT COALESCE(SUM(total_minor),0) FROM invoices WHERE client_id = ? AND status NOT IN ('draft','cancelled')", [$recipient])
+        - (int) $db->value("SELECT COALESCE(SUM(pay.amount_minor),0) FROM payments pay JOIN invoices i ON i.id = pay.invoice_id WHERE i.client_id = ? AND i.status NOT IN ('draft','cancelled')", [$recipient]);
+    eq($a['balance'], $expected);
+    eq(end($a['rows'])['balance'], $expected);
+    eq($a['invoiced'] - $a['settled'], $expected);
+    eq(in_array(70000, array_column($a['open'], 'due'), true), true);
+    $later = $invoices->statement($recipient, (new DateTimeImmutable('tomorrow', local_tz()))->format('Y-m-d'));
+    eq($later['accounts']['XOF']['opening'], $expected);   // tout est reporté avant la période
+    eq($later['accounts']['XOF']['rows'], []);
+    eq(substr((new PdfService())->statement((new ClientService())->find($recipient), $st), 0, 5), '%PDF-');
+});
+test('Filtres : rôle des clients, situation de paiement des colis', function () use ($clients, $parcels, $invoices, $payments, $payInvoice, $sender, $recipient) {
+    $senders = array_column($clients->search('', 500, 0, false, 'sender'), 'id');
+    $recipients = array_column($clients->search('', 500, 0, false, 'recipient'), 'id');
+    eq([in_array($sender, $senders), in_array($recipient, $senders)], [true, false]);
+    eq([in_array($recipient, $recipients), in_array($sender, $recipients)], [true, false]);
+    eq($clients->count('', false, 'sender'), count($senders));
+    $id = $payInvoice();
+    $pid = (int) $invoices->items($id)[0]['parcel_id'];
+    $in = fn (string $state) => in_array($pid, array_column($parcels->list(['payment' => $state], 1000), 'id'));
+    eq([$in('due'), $in('unbilled'), $in('paid')], [true, false, false]);
+    $payments->record($id, ['amount' => '40000', 'method' => 'cash', 'form_token' => token()]);
+    eq([$in('partial'), $in('due')], [true, true]);
+    $payments->record($id, ['amount' => '60000', 'method' => 'cash', 'form_token' => token()]);
+    eq([$in('paid'), $in('partial')], [true, false]);
+    $paid = $parcels->list(['payment' => 'paid'], 1000);
+    eq(array_unique(array_column($paid, 'invoice_status')), ['paid']);
 });
 
 echo "\nDépenses\n";
@@ -379,6 +415,17 @@ test('Retrait au dépôt : confirmation explicite obligatoire avant « Livré »
     eq($parcels->get($p)['status'], 'arrived');
     $deliveries->confirm($d, ['recipient_name' => 'Kouamé Jean', 'confirm' => '1'], null);
     eq($parcels->get($p)['status'], 'delivered');
+});
+test('Remise au guichet en une étape : tout ou rien', function () use ($deliveries, $parcels, $arrived, $db) {
+    $p = $arrived();
+    throws(ValidationException::class, fn () => $deliveries->handOver($p, ['recipient_name' => 'Aya'], null));
+    eq((int) $db->value('SELECT COUNT(*) FROM deliveries WHERE parcel_id = ?', [$p]), 0, 'aucune remise orpheline après un refus');
+    eq($parcels->get($p)['status'], 'arrived');
+    $d = $deliveries->handOver($p, ['recipient_name' => 'Konan Aya', 'recipient_id_note' => 'CNI …4521', 'confirm' => '1'], null);
+    $row = $deliveries->get($d);
+    eq([$row['mode'], $row['status'], $row['recipient_name']], ['pickup', 'done', 'Konan Aya']);
+    eq($parcels->get($p)['status'], 'delivered');
+    throws(BusinessException::class, fn () => $deliveries->handOver($p, ['recipient_name' => 'Konan Aya', 'confirm' => '1'], null));
 });
 test('Livraison : démarrage, échec, nouvelle tentative, agent limité à ses tournées', function () use ($deliveries, $parcels, $arrived, $admin) {
     $p = $arrived();
@@ -480,6 +527,27 @@ test('Paramètres : validation, priorité sur .env, utilisés dans les PDF, jour
     eq(App\Core\Settings::save(['COMPANY_PHONE' => '', 'COMPANY_DEPOT_INFO' => ''], (int) $admin['id']) !== [], true);
     eq(App\Core\Settings::get('COMPANY_PHONE'), '', 'vidé volontairement : masqué (ne revient pas à .env)');
     ok(Domain::roleCan('admin', 'settings.manage') && !Domain::roleCan('manager', 'settings.manage'), 'réservé à l’administrateur');
+    // Adresse, e-mail, mentions et moyens de paiement : modifiables, imprimés sur les documents
+    throws(ValidationException::class, fn () => App\Core\Settings::save(['COMPANY_EMAIL' => 'pas-un-mail'], (int) $admin['id']), 'e-mail invalide');
+    eq(App\Core\Settings::save(['COMPANY_ADDRESS' => 'Adjamé, Abidjan', 'COMPANY_EMAIL' => 'contact@diarrassouba.ci'], (int) $admin['id']), ['COMPANY_EMAIL', 'COMPANY_ADDRESS']);
+    eq(App\Core\Settings::get('COMPANY_DEPOT_INFO'), '', 'clé non envoyée : inchangée');
+    $iid = (int) $db->value("SELECT id FROM invoices WHERE status <> 'draft' ORDER BY id LIMIT 1");
+    $svc = new InvoiceService();
+    $txt = pdf_text((new PdfService())->invoice($svc->find($iid), $svc->items($iid), [], []));
+    ok(str_contains($txt, mb_convert_encoding('Adjamé, Abidjan', 'Windows-1252', 'UTF-8')) && !str_contains($txt, 'Treichville'), 'nouvelle adresse sur la facture');
+});
+test('Relevé partagé : numéro WhatsApp international, message, lien signé', function () use ($invoices, $recipient, $clients) {
+    eq(intl_phone('07 07 00 00 01', 'CI'), '2250707000001');
+    eq(intl_phone('0100 111 2222', 'EG'), '201001112222');
+    eq(intl_phone('+20 100 111 2222', 'CI'), '201001112222');
+    eq(intl_phone('0033 6 12 34 56 78', 'EG'), '33612345678');
+    eq(intl_phone('77 123 45 67', 'XX'), '');
+    $c = $clients->find($recipient);
+    $msg = $invoices->statementMessage($c, $invoices->statement($recipient), 'https://exemple/partage/releve/1', 72);
+    ok(str_starts_with($msg, 'Bonjour Kouamé Jean,') && str_contains($msg, $c['code']) && str_contains($msg, 'https://exemple/partage/releve/1') && str_contains($msg, '72 h'), 'message');
+    $parts = explode('/', parse_url(Signer::shareUrl('releve', $recipient), PHP_URL_PATH));
+    [$type, $id, $exp, $sig] = array_slice($parts, -4);
+    ok(Signer::verify($type, (int) $id, (int) $exp, $sig) && !Signer::verify('releve', $recipient + 1, (int) $exp, $sig), 'signature liée au client');
 });
 
 test('Droits : le comptoir charge un vol en préparation, sans en changer le statut', function () use ($admin) {

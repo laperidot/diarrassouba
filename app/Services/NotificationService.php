@@ -18,15 +18,15 @@ final class NotificationService
 
     public const EVENTS = [
         'parcel.registered'   => 'Colis enregistré',
-        'parcel.departed'     => 'Départ confirmé',
-        'parcel.arrived'      => 'Arrivée à destination',
-        'parcel.at_depot'     => 'Colis disponible au dépôt',
-        'parcel.out_for_delivery' => 'Mise en livraison',
-        'parcel.delivered'    => 'Livraison confirmée',
-        'parcel.exception'    => 'Incident sur un colis',
-        'invoice.issued'      => 'Facture émise',
-        'payment.recorded'    => 'Paiement enregistré',
-        'invoice.due_soon'    => 'Échéance proche',
+        'parcel.departed'     => 'Colis parti',
+        'parcel.arrived'      => 'Colis arrivé',
+        'parcel.at_depot'     => 'Colis prêt à récupérer',
+        'parcel.out_for_delivery' => 'Colis en route vers le client',
+        'parcel.delivered'    => 'Colis remis',
+        'parcel.exception'    => 'Problème sur un colis',
+        'invoice.issued'      => 'Nouvelle facture',
+        'payment.recorded'    => 'Paiement reçu',
+        'invoice.due_soon'    => 'Facture bientôt à payer',
     ];
 
     /** Statut colis -> événement client. */

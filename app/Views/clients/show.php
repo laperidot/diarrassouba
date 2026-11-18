@@ -42,14 +42,14 @@
         <div class="empty"><p>Aucune facture.</p></div>
       <?php else: ?>
       <table class="table stacked">
-        <thead><tr><th>Numéro</th><th>Date</th><th class="num">Total</th><th class="num">Reste</th><th>Statut</th></tr></thead>
+        <thead><tr><th>Numéro</th><th>Date</th><th class="num">Total</th><th class="num">Reste à payer</th><th>Statut</th></tr></thead>
         <tbody>
         <?php foreach ($invoices as $i): ?>
           <tr>
-            <td class="primary" data-label="Numéro"><a class="row-link" href="<?= e(url('factures/' . $i['id'])) ?>"><?= e($i['number'] ?? 'Brouillon #' . $i['id']) ?></a></td>
+            <td class="primary" data-label="Numéro"><a class="row-link" href="<?= e(url('factures/' . $i['id'])) ?>"><?= e($i['number'] ?? 'À terminer #' . $i['id']) ?></a></td>
             <td data-label="Date"><?= e(d($i['issue_date'] ?? $i['created_at'])) ?></td>
             <td data-label="Total" class="num"><?= e(money((int) $i['total_minor'], $i['currency'])) ?></td>
-            <td data-label="Reste" class="num"><?= in_array($i['status'], ['validated', 'partial'], true) ? e(money((int) $i['total_minor'] - (int) $i['paid_minor'], $i['currency'])) : '—' ?></td>
+            <td data-label="Reste à payer" class="num"><?= in_array($i['status'], ['validated', 'partial'], true) ? e(money((int) $i['total_minor'] - (int) $i['paid_minor'], $i['currency'])) : '—' ?></td>
             <td data-label="Statut" class="end"><?= status_badge($i['status'], 'invoice') ?></td>
           </tr>
         <?php endforeach ?>
@@ -69,23 +69,30 @@
         <dt>E-mail</dt><dd><?= e($c['email'] ?: '—') ?></dd>
         <dt>Adresse</dt><dd><?= e(trim(($c['address'] ?? '') . ' ' . ($c['city'] ?? '')) ?: '—') ?><?= $c['country'] ? ', ' . e(country_name($c['country'])) : '' ?></dd>
         <?php endif ?>
-        <dt>Paiement habituel</dt><dd><?= e(Domain::PAYMENT_TERMS[$c['default_payment_terms'] ?? ''] ?? 'Non précisé') ?></dd>
+        <dt>Paie d’habitude</dt><dd><?= e(Domain::PAYMENT_TERMS[$c['default_payment_terms'] ?? ''] ?? 'Pas précisé') ?></dd>
         <dt>Client depuis</dt><dd><?= e(dt($c['created_at'], 'd/m/Y')) ?></dd>
       </dl>
       <?php if ($c['notes'] && can('clients.contacts')): ?><hr><p class="small"><?= nl2br(e($c['notes'])) ?></p><?php endif ?>
     </section>
-    <?php if ($balances): ?>
-    <section class="panel">
-      <h2 style="margin-bottom:8px">Reste à payer</h2>
-      <?php foreach ($balances as $b): if ((int) $b['due'] === 0) continue; ?>
-        <div class="kv-line"><span><?= e($b['currency']) ?></span><strong class="num" style="color:var(--coral-ink)"><?= e(money((int) $b['due'], $b['currency'])) ?></strong></div>
+    <?php if (can('invoices.view') && $invoices): $dues = array_filter($balances, fn ($b) => (int) $b['due'] !== 0); ?>
+    <section class="panel statement-share" id="releve">
+      <h2 style="margin-bottom:8px">Relevé de compte</h2>
+      <?php foreach ($dues as $b): ?>
+        <div class="kv-line"><span>Reste à payer (<?= e($b['currency']) ?>)</span><strong class="num" style="color:var(--coral-ink)"><?= e(money((int) $b['due'], $b['currency'])) ?></strong></div>
       <?php endforeach ?>
+      <?php if (!$dues): ?><div class="kv-line"><span>Situation</span><strong style="color:var(--teal-ink)">Compte soldé</strong></div><?php endif ?>
+      <div class="share-actions">
+        <button class="btn btn-go btn-block" type="button" data-share-endpoint="<?= e(url('clients/' . $c['id'] . '/releve/partage')) ?>"><?= icon('share') ?>Partager le relevé</button>
+        <button class="btn btn-block btn-whatsapp" type="button" data-share-endpoint="<?= e(url('clients/' . $c['id'] . '/releve/partage')) ?>" data-share-via="whatsapp">Envoyer par WhatsApp</button>
+        <a class="btn btn-quiet btn-block" href="<?= e(url('clients/' . $c['id'] . '/releve')) ?>" target="_blank" rel="noopener"><?= icon('download') ?>Relevé PDF</a>
+      </div>
+      <p class="small muted" style="margin:10px 0 0">Le client reçoit un message de bonjour, ses totaux et un lien vers son relevé (page mobile et PDF), valable <?= (int) App\Core\Config::int('SHARE_LINK_TTL_HOURS', 72) ?> h.</p>
     </section>
     <?php endif ?>
     <?php if (can('clients.edit')): ?>
     <form method="post" action="<?= e(url('clients/' . $c['id'] . '/archiver')) ?>"><?= csrf_field() ?>
-      <?php if ($c['archived_at']): ?><input type="hidden" name="restore" value="1"><button class="btn btn-block">Réactiver le client</button>
-      <?php else: ?><button class="btn btn-quiet btn-block" data-confirm="Archiver ce client ? Son historique est conservé.">Archiver le client</button><?php endif ?>
+      <?php if ($c['archived_at']): ?><input type="hidden" name="restore" value="1"><button class="btn btn-block">Afficher de nouveau ce client</button>
+      <?php else: ?><button class="btn btn-quiet btn-block" data-confirm="Ranger ce client ? Il n’apparaîtra plus dans les recherches, mais rien n’est effacé.">Ranger ce client (ne plus l’afficher)</button><?php endif ?>
     </form>
     <?php endif ?>
   </aside>

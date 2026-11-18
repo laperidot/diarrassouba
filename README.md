@@ -22,7 +22,7 @@ php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
 
 php bin/migrate.php                                   # crée les tables
 php bin/create-admin.php "Votre Nom" vous@exemple.com # demande le mot de passe
-php bin/seed-demo.php                                 # optionnel : données de démonstration
+php bin/seed-demo.php                                 # optionnel : démonstration complète (ajoutée à vos données)
 php -S 127.0.0.1:8080 -t public public/index.php      # http://127.0.0.1:8080
 ```
 
@@ -36,6 +36,8 @@ Le `.htaccess` de la racine du projet redirige tout vers `public/` (le code, `.e
 
 Les comptes de démonstration (un par rôle) ont pour mot de passe `Demo2026pass` :
 `manager@`, `comptoir@`, `logistique@`, `caisse@`, `livreur@diarrassouba.test`.
+La démonstration (20 clients, 32 colis, 6 vols à toutes les étapes, factures payées / partielles / échues, remises)
+est **ajoutée** à côté des données existantes, sans rien effacer, et une seule fois par base.
 Ne lancez jamais `seed-demo.php` en production (il refuse si `APP_ENV=production`).
 
 ## 2. Mise en production sur Hostinger
@@ -122,11 +124,12 @@ Faites un essai de restauration sur une base vide au moins une fois par trimestr
 ## 4. Tests
 
 ```bash
-php tests/run.php            # 35 tests métier sur une base SQLite temporaire
+php tests/run.php            # 39 tests métier sur une base SQLite temporaire
 TEST_DB_NAME=di_test DB_USER=… DB_PASS=… php tests/run.php   # mêmes tests sur MySQL (base dédiée et VIDE)
 python3 tests/e2e.py [URL]   # 41 vérifications navigateur (Playwright) sur le serveur local + démo
 python3 tests/e2e_vols.py [URL]  # parcours « charger un vol » et raccourcis du tableau de bord
 python3 tests/e2e_gestion.py [URL] # vol dès l’enregistrement, statut des vols, paramètres de l’entreprise
+python3 tests/e2e_simple.py [URL]  # simplicité, rôle par rôle (tarif d’office, remise au guichet, livreur, caisse, filtres, relevé)
 ```
 
 ### Mode d’emploi express : mettre des colis dans un vol
@@ -142,13 +145,67 @@ python3 tests/e2e_gestion.py [URL] # vol dès l’enregistrement, statut des vol
    le bloc **« Étape suivante »** en haut de la page du dossier, ou depuis le panneau **« Vols en cours »** du tableau
    de bord. L’étape logique suivante est présélectionnée ; *Date réelle et options* permet d’indiquer l’heure exacte.
 
+### Une application fluide
+- **Pages préchargées** : dans Chrome et Edge, la page visée est chargée dès le survol ou l’appui sur un lien
+  (règles servies par `/prechargement.json`, en-tête `Speculation-Rules`) ; fichiers, PDF et liens publics exclus.
+- **Transitions douces** entre les pages, **barre de chargement** en haut et bouton « en cours » pendant un envoi.
+- **Filtres immédiats** : changer une liste, une date ou une case suffit, sans bouton « Filtrer ».
+- **On garde sa place** : après un enregistrement sur la même page, on revient au même endroit et le message
+  s’affiche aussi en bas de l’écran. En cas d’erreur, le curseur va directement sur le champ à corriger.
+- **Après un nouveau colis** : « Et maintenant ? » propose d’imprimer l’étiquette ou d’enregistrer un autre colis
+  du même expéditeur, même destination déjà remplie.
+
+### Les mots de l’application
+L’application parle simplement, comme au comptoir :
+
+| On dit | Au lieu de |
+|---|---|
+| **Vol** | dossier d’expédition |
+| **Prix au kilo** | tarif, grille tarifaire |
+| **Poids compté** | poids facturable |
+| **À payer avant le** | échéance |
+| **En retard** | échue |
+| **Reste à payer** | solde |
+| **Facture à terminer** / **Terminer la facture** | brouillon / valider et numéroter |
+| **Facture d’annulation** | avoir |
+| **Problème** | incident, anomalie |
+| **Remis au client** | livré ou récupéré |
+| **Historique des actions** | journal d’audit |
+
+Dans le code et la base de données, les noms techniques ne changent pas (`shipments`, `/dossiers`, `credit_note`…).
+
+### Remettre un colis et encaisser
+- **Client au comptoir** : fiche du colis (ou Livraisons → *Prêts à remettre* → **Remettre**) → nom prérempli,
+  pièce d’identité, case de confirmation → **Remettre le colis maintenant**. Une seule étape.
+- **Livraison à domicile** : *Planifier une livraison…* sur la fiche du colis. Le livreur voit sur sa liste le téléphone
+  (appel en un geste), l’adresse et les boutons **Démarrer** puis **Confirmer la remise**.
+- **Caisse** : raccourci **Encaisser** → filtres *À encaisser* / *Échues* avec compteurs → bouton **Encaisser** sur la
+  ligne : le reste dû est prérempli.
+- **Enregistrement d’un colis** : la grille tarifaire du trajet (la moins chère) est choisie d’office et suit la
+  destination ; l’agent peut toujours en choisir une autre.
+- **Paiement** : la référence de transaction est facultative (elle reste unique par moyen quand elle est saisie).
+
+### Retrouver et documenter
+- **Clients** : filtres *Tous* / *Expéditeurs* / *Destinataires* avec compteurs ; la colonne *Rôle* indique qui a
+  envoyé et qui a reçu des colis.
+- **Colis** : colonne et filtre **Paiement** (non facturé, facture en préparation, à payer, échu, payé en partie,
+  payé) ; le badge ouvre la facture.
+- **Documents PDF** : facture, reçu et **relevé de compte** (fiche client → *Relevé de compte* ; période facultative
+  `?du=AAAA-MM-JJ&au=AAAA-MM-JJ`) partagent la même mise en page : bandeau nuit à coupe oblique, tableau à lignes
+  alternées, total mis en avant, pied de page avec téléphone et adresse de suivi.
+- **Partager un relevé** : fiche client → *Relevé de compte* → **Partager le relevé** (WhatsApp, SMS, e-mail…) ou
+  **Envoyer par WhatsApp** (numéro du client prérempli). Le client reçoit un message de bonjour avec ses totaux et un
+  lien signé vers une page mobile : totaux, versements, factures, bouton PDF. Lien valable `SHARE_LINK_TTL_HOURS` h.
+
 Droits : le comptoir (agent d’enregistrement) peut **mettre** un colis dans un vol en préparation ; changer le statut
 d’un vol ou retirer un colis reste réservé à la logistique et au responsable.
 
 ### Paramètres de l’entreprise (administrateur)
-Menu → **Paramètres** : téléphone de l’entreprise et informations de retrait au dépôt. Ils s’appliquent immédiatement
-à la page publique de suivi et aux nouveaux PDF (factures, reçus, étiquettes). Tant qu’aucune valeur n’est enregistrée,
-celles de `.env` (`COMPANY_PHONE`, `COMPANY_DEPOT_INFO`) s’appliquent.
+Menu → **Paramètres** : téléphone, e-mail, adresse de l’agence, mentions légales, moyens de paiement acceptés et
+informations de retrait au dépôt. Ils s’appliquent immédiatement à la page publique de suivi, aux relevés partagés et aux
+nouveaux PDF (factures, reçus, relevés, étiquettes). Tant qu’aucune valeur n’est enregistrée, celles de `.env`
+(`COMPANY_PHONE`, `COMPANY_EMAIL`, `COMPANY_ADDRESS`, `COMPANY_LEGAL`, `COMPANY_PAYMENT_INFO`, `COMPANY_DEPOT_INFO`)
+s’appliquent.
 
 Seuls les colis de la même destination, non affectés et encore au comptoir peuvent être ajoutés ; un dossier
 n’accepte des colis qu’« En préparation ». Pour corriger un oubli après le départ, repassez-le « En préparation ».

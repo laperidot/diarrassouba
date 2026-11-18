@@ -12,26 +12,26 @@ final class Domain
     // ---------------- Statuts des colis ----------------
     /** Parcours normal, dans l'ordre. */
     public const PARCEL_FLOW = [
-        'registered'        => 'Colis enregistré',
-        'awaiting'          => "En attente d'expédition",
-        'shipped'           => 'Expédié',
-        'in_transit'        => 'En transit',
-        'arrived'           => 'Arrivé à destination',
-        'at_depot'          => 'Disponible au dépôt',
-        'out_for_delivery'  => 'En cours de livraison',
-        'delivered'         => 'Livré ou récupéré',
+        'registered'        => 'Enregistré',
+        'awaiting'          => 'Attend le vol',
+        'shipped'           => 'Parti',
+        'in_transit'        => 'En vol',
+        'arrived'           => 'Arrivé',
+        'at_depot'          => 'Prêt à récupérer',
+        'out_for_delivery'  => 'En route vers le client',
+        'delivered'         => 'Remis au client',
     ];
 
     public const PARCEL_EXCEPTIONS = [
-        'anomaly'          => 'Anomalie',
-        'blocked'          => 'Colis bloqué',
-        'delivery_failed'  => 'Livraison échouée',
-        'check_required'   => 'Vérification requise',
+        'anomaly'          => 'Problème',
+        'blocked'          => 'Bloqué',
+        'delivery_failed'  => 'Pas pu être livré',
+        'check_required'   => 'À vérifier',
     ];
 
     /** Libellés courts pour le rail de progression. */
     public const PARCEL_SHORT = [
-        'registered' => 'Enregistré', 'awaiting' => 'En attente', 'shipped' => 'Expédié',
+        'registered' => 'Enregistré', 'awaiting' => 'Attend le vol', 'shipped' => 'Parti',
         'in_transit' => 'En vol', 'arrived' => 'Arrivé', 'at_depot' => 'Au dépôt',
         'out_for_delivery' => 'En livraison', 'delivered' => 'Remis',
     ];
@@ -109,9 +109,9 @@ final class Domain
     public const SHIPMENT_STATUSES = [
         'preparation' => 'En préparation',
         'departed'    => 'Parti',
-        'in_transit'  => 'En transit',
+        'in_transit'  => 'En vol',
         'arrived'     => 'Arrivé',
-        'closed'      => 'Clôturé',
+        'closed'      => 'Terminé',
         'cancelled'   => 'Annulé',
     ];
 
@@ -133,12 +133,12 @@ final class Domain
 
     /** Libellé d'action pour chaque changement de statut d'un dossier (boutons). */
     public const SHIPMENT_ACTIONS = [
-        'preparation' => 'Repasser en préparation',
+        'preparation' => 'Remettre en préparation',
         'departed'    => 'Confirmer le départ',
-        'in_transit'  => 'Marquer en transit',
+        'in_transit'  => 'Marquer « en vol »',
         'arrived'     => 'Confirmer l’arrivée',
-        'closed'      => 'Clôturer le dossier',
-        'cancelled'   => 'Annuler le dossier',
+        'closed'      => 'Terminer le vol (tout est remis)',
+        'cancelled'   => 'Annuler le vol',
     ];
 
     /** Étape « naturelle » suivante, proposée par défaut. */
@@ -160,12 +160,12 @@ final class Domain
 
     // ---------------- Factures ----------------
     public const INVOICE_STATUSES = [
-        'draft'     => 'Brouillon',
-        'validated' => 'Validée',
-        'partial'   => 'Partiellement payée',
+        'draft'     => 'À terminer',
+        'validated' => 'À payer',
+        'partial'   => 'Payée en partie',
         'paid'      => 'Payée',
         'cancelled' => 'Annulée',
-        'credited'  => 'Avoir émis',
+        'credited'  => 'Annulée (avoir)',
     ];
 
     public const INVOICE_TONE = [
@@ -174,11 +174,11 @@ final class Domain
     ];
 
     public const PAYMENT_TERMS = [
-        'before_shipping' => 'Paiement intégral avant expédition',
-        'on_arrival'      => "Paiement à l'arrivée",
-        'deposit'         => 'Acompte puis solde',
-        'installments'    => 'Paiement en plusieurs échéances',
-        'on_delivery'     => 'Paiement à la livraison',
+        'before_shipping' => 'Tout payer avant le départ',
+        'on_arrival'      => 'Payer à l’arrivée du colis',
+        'deposit'         => 'Une avance, puis le reste',
+        'installments'    => 'Payer en plusieurs fois',
+        'on_delivery'     => 'Payer à la remise du colis',
     ];
 
     public const PAYMENT_METHODS = [
@@ -195,19 +195,19 @@ final class Domain
     // ---------------- Dépenses ----------------
     public const EXPENSE_CATEGORIES = [
         'air_ticket' => "Billets d'avion",
-        'air_freight' => 'Fret aérien',
-        'handling'   => 'Manutention',
-        'customs'    => 'Douane et formalités',
-        'local_transport' => 'Transport local',
+        'air_freight' => 'Transport cargo (avion)',
+        'handling'   => 'Chargement et déchargement',
+        'customs'    => 'Douane',
+        'local_transport' => 'Transport sur place',
         'delivery'   => 'Livraison',
         'storage'    => 'Stockage',
         'packaging'  => 'Emballage',
-        'other'      => 'Autres dépenses opérationnelles',
+        'other'      => 'Autres dépenses',
     ];
 
     public const EXPENSE_PAYMENT_STATUS = [
         'unpaid' => 'À payer',
-        'partial' => 'Partiellement payée',
+        'partial' => 'Payée en partie',
         'paid' => 'Payée',
     ];
 
@@ -218,10 +218,10 @@ final class Domain
     ];
 
     public const DELIVERY_STATUSES = [
-        'planned'     => 'Planifiée',
-        'in_progress' => 'En cours',
-        'done'        => 'Remise confirmée',
-        'failed'      => 'Tentative échouée',
+        'planned'     => 'Prévue',
+        'in_progress' => 'En route',
+        'done'        => 'Remis',
+        'failed'      => 'Pas pu livrer',
         'cancelled'   => 'Annulée',
     ];
 
@@ -270,10 +270,10 @@ final class Domain
     public const ROLES = [
         'admin'     => 'Administrateur',
         'manager'   => 'Responsable',
-        'registrar' => "Agent d'enregistrement",
-        'logistics' => 'Agent logistique',
-        'cashier'   => 'Comptable / caissier',
-        'courier'   => 'Agent de livraison',
+        'registrar' => 'Comptoir (réception des colis)',
+        'logistics' => 'Logistique (vols)',
+        'cashier'   => 'Caisse',
+        'courier'   => 'Livreur',
     ];
 
     /** Permission => rôles autorisés (l'administrateur a tout). */

@@ -151,6 +151,16 @@ final class Pdf
         ));
     }
 
+    /** Polygone plein : $points = [[x, y], …] (bandeaux à coupe oblique). */
+    public function polygon(array $points, string $fill): void
+    {
+        $path = [];
+        foreach (array_values($points) as $i => [$x, $y]) {
+            $path[] = sprintf('%.2f %.2f %s', $x, $this->height - $y, $i === 0 ? 'm' : 'l');
+        }
+        $this->out(self::rgb($fill) . ' rg ' . implode(' ', $path) . ' h f');
+    }
+
     public function line(float $x1, float $y1, float $x2, float $y2, string $color = '#E3E6EB', float $width = 0.6, ?array $dash = null): void
     {
         $this->out(sprintf(

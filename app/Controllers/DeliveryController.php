@@ -19,7 +19,7 @@ final class DeliveryController extends Controller
         $svc = new DeliveryService();
         $status = Request::query('statut', 'open');
         return $this->view('deliveries/index', [
-            'title' => Auth::role() === 'courier' ? 'Mes livraisons' : 'Livraisons et retraits',
+            'title' => Auth::role() === 'courier' ? 'Mes livraisons' : 'Remises et livraisons',
             'deliveries' => $svc->list(['status' => $status, 'mode' => Request::query('mode')], 60),
             'ready' => Auth::can('deliveries.manage') ? $svc->readyParcels() : [],
             'status' => $status,
@@ -30,8 +30,17 @@ final class DeliveryController extends Controller
     {
         Auth::require('deliveries.manage');
         $did = $this->attempt(fn () => (new DeliveryService())->plan((int) $id, Request::all()), "colis/$id");
-        Session::flash('success', 'Remise planifiée.');
+        Session::flash('success', 'Livraison prévue.');
         $this->redirect('livraisons/' . $did);
+    }
+
+    public function handOver(string $id): never
+    {
+        Auth::require('deliveries.manage');
+        Auth::require('deliveries.confirm');
+        $this->attempt(fn () => (new DeliveryService())->handOver((int) $id, Request::all(), Request::file('proof')), "colis/$id#remise");
+        Session::flash('success', 'Colis remis : le client voit « Remis au client » sur sa page de suivi.');
+        $this->redirect('colis/' . $id);
     }
 
     public function show(string $id): string
@@ -55,7 +64,7 @@ final class DeliveryController extends Controller
     {
         Auth::require('deliveries.confirm');
         $this->attempt(fn () => (new DeliveryService())->confirm((int) $id, Request::all(), Request::file('proof')), "livraisons/$id");
-        Session::flash('success', 'Remise confirmée : colis livré.');
+        Session::flash('success', 'C’est noté : colis remis.');
         $this->redirect('livraisons/' . $id);
     }
 
@@ -63,7 +72,7 @@ final class DeliveryController extends Controller
     {
         Auth::require('deliveries.confirm');
         $this->attempt(fn () => (new DeliveryService())->fail((int) $id, Request::str('incident')), "livraisons/$id");
-        Session::flash('warning', 'Tentative échouée enregistrée. Planifiez une nouvelle remise depuis la fiche du colis.');
+        Session::flash('warning', 'C’est noté. Pour réessayer, ouvrez le colis et prévoyez une nouvelle livraison.');
         $this->redirect('livraisons/' . $id);
     }
 
@@ -71,7 +80,7 @@ final class DeliveryController extends Controller
     {
         Auth::require('deliveries.manage');
         $this->attempt(fn () => (new DeliveryService())->cancel((int) $id), "livraisons/$id");
-        Session::flash('success', 'Remise annulée.');
+        Session::flash('success', 'Livraison annulée.');
         $this->redirect('livraisons');
     }
 

@@ -23,6 +23,7 @@ final class ParcelController extends Controller
         return [
             'q' => Request::query('q'), 'status' => Request::query('statut'), 'destination' => Request::query('destination'),
             'from' => Request::query('du'), 'to' => Request::query('au'), 'shipment_id' => Request::query('dossier'),
+            'payment' => Auth::can('invoices.view') ? Request::query('paiement') : '',
         ];
     }
 
@@ -81,7 +82,7 @@ final class ParcelController extends Controller
             }
         }
         Session::flash('success', $msg);
-        $this->redirect('colis/' . $result['id']);
+        $this->redirect('colis/' . $result['id'], ['suite' => '1']);
     }
 
     public function show(string $id): string
@@ -140,7 +141,7 @@ final class ParcelController extends Controller
             'location' => Request::str('location'),
             'occurred_at' => Request::str('occurred_at') ?: null,
         ]), "colis/$id");
-        Session::flash('success', 'Statut mis à jour : ' . Domain::parcelLabel($to) . '.');
+        Session::flash('success', 'C’est noté : ' . Domain::parcelLabel($to) . '.');
         $this->redirect('colis/' . $id);
     }
 
@@ -155,7 +156,7 @@ final class ParcelController extends Controller
             }
             (new ParcelService())->attach((int) $id, $file);
         }, "colis/$id");
-        Session::flash('success', 'Pièce jointe ajoutée.');
+        Session::flash('success', 'Ajouté.');
         $this->redirect('colis/' . $id);
     }
 

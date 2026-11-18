@@ -27,6 +27,7 @@ final class InvoiceController extends Controller
             'title' => 'Factures',
             'invoices' => $svc->list($f, 30, ($page - 1) * 30),
             'total' => $svc->count($f), 'f' => $f, 'page' => $page,
+            'counts' => array_map(fn ($s) => $svc->count(['q' => $f['q'], 'status' => $s]), ['open' => 'open', 'overdue' => 'overdue', 'draft' => 'draft']),
         ]);
     }
 
@@ -55,7 +56,7 @@ final class InvoiceController extends Controller
             'due_date' => Request::str('due_date'),
             'notes' => Request::str('notes'),
         ]), 'factures/nouvelle?client=' . $clientId);
-        Session::flash('success', 'Brouillon créé. Vérifiez les lignes puis validez la facture.');
+        Session::flash('success', 'Facture préparée. Vérifiez-la, puis cliquez sur « Terminer la facture ».');
         $this->redirect('factures/' . $id);
     }
 
@@ -66,7 +67,7 @@ final class InvoiceController extends Controller
         $inv = $svc->find((int) $id);
         $this->notFoundUnless($inv);
         return $this->view('invoices/show', [
-            'title' => ($inv['kind'] === 'credit_note' ? 'Avoir ' : 'Facture ') . ($inv['number'] ?? 'brouillon'),
+            'title' => ($inv['kind'] === 'credit_note' ? 'Annulation ' : 'Facture ') . ($inv['number'] ?? 'à terminer'),
             'inv' => $inv,
             'items' => $svc->items((int) $id),
             'installments' => $svc->installments((int) $id),
@@ -79,7 +80,7 @@ final class InvoiceController extends Controller
     {
         Auth::require('invoices.edit');
         $this->attempt(fn () => (new InvoiceService())->updateDraft((int) $id, $_POST), "factures/$id");
-        Session::flash('success', 'Brouillon enregistré.');
+        Session::flash('success', 'Enregistré.');
         $this->redirect('factures/' . $id);
     }
 
@@ -87,7 +88,7 @@ final class InvoiceController extends Controller
     {
         Auth::require('invoices.edit');
         $this->attempt(fn () => (new InvoiceService())->removeItem((int) $id, (int) $item), "factures/$id");
-        Session::flash('success', 'Ligne retirée : le colis redevient facturable.');
+        Session::flash('success', 'Colis retiré de la facture.');
         $this->redirect('factures/' . $id);
     }
 
@@ -95,7 +96,7 @@ final class InvoiceController extends Controller
     {
         Auth::require('invoices.edit');
         $this->attempt(fn () => (new InvoiceService())->validate((int) $id), "factures/$id");
-        Session::flash('success', 'Facture validée et numérotée. Elle ne peut plus être modifiée.');
+        Session::flash('success', 'Facture terminée : elle a son numéro et peut être envoyée au client.');
         $this->redirect('factures/' . $id);
     }
 
@@ -103,7 +104,7 @@ final class InvoiceController extends Controller
     {
         Auth::require('invoices.edit');
         $this->attempt(fn () => (new InvoiceService())->deleteDraft((int) $id), "factures/$id");
-        Session::flash('success', 'Brouillon supprimé. Les colis redeviennent facturables.');
+        Session::flash('success', 'Facture supprimée. Ses colis peuvent être mis sur une autre facture.');
         $this->redirect('factures');
     }
 
@@ -111,7 +112,7 @@ final class InvoiceController extends Controller
     {
         Auth::require('invoices.cancel');
         $this->attempt(fn () => (new InvoiceService())->cancel((int) $id, Request::str('reason')), "factures/$id");
-        Session::flash('success', 'Facture annulée. Son numéro est conservé dans l’historique.');
+        Session::flash('success', 'Facture annulée. Elle reste visible, barrée.');
         $this->redirect('factures/' . $id);
     }
 
@@ -119,7 +120,7 @@ final class InvoiceController extends Controller
     {
         Auth::require('invoices.cancel');
         $creditId = $this->attempt(fn () => (new InvoiceService())->creditNote((int) $id, Request::str('reason')), "factures/$id");
-        Session::flash('success', 'Avoir émis.');
+        Session::flash('success', 'Facture d’annulation faite.');
         $this->redirect('factures/' . $creditId);
     }
 
@@ -140,9 +141,9 @@ final class InvoiceController extends Controller
         $inv = (new InvoiceService())->find((int) $id);
         $this->notFoundUnless($inv);
         if ($inv['status'] === 'draft') {
-            $this->json(['error' => 'Un brouillon ne se partage pas : validez d’abord la facture.'], 422);
+            $this->json(['error' => 'Terminez d’abord la facture pour pouvoir l’envoyer.'], 422);
         }
         Audit::log('invoice.shared', 'invoice', (int) $id);
-        $this->json(['url' => Signer::shareUrl('facture', (int) $id), 'title' => ($inv['kind'] === 'credit_note' ? 'Avoir ' : 'Facture ') . $inv['number'], 'hours' => \App\Core\Config::int('SHARE_LINK_TTL_HOURS', 72)]);
+        $this->json(['url' => Signer::shareUrl('facture', (int) $id), 'title' => ($inv['kind'] === 'credit_note' ? 'Annulation ' : 'Facture ') . $inv['number'], 'hours' => \App\Core\Config::int('SHARE_LINK_TTL_HOURS', 72)]);
     }
 }

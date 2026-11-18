@@ -20,10 +20,10 @@
   <h2 style="margin-bottom:10px">Ce que chaque rôle peut faire</h2>
   <div class="grid grid-3 small">
     <div><strong>Administrateur</strong><p class="muted">Tout, dont les utilisateurs.</p></div>
-    <div><strong>Responsable</strong><p class="muted">Toutes les opérations et finances, annulations, tarifs, journal.</p></div>
-    <div><strong>Agent d’enregistrement</strong><p class="muted">Clients, colis, étiquettes, statuts.</p></div>
-    <div><strong>Agent logistique</strong><p class="muted">Dossiers de vol, statuts, livraisons, dépenses.</p></div>
-    <div><strong>Comptable / caissier</strong><p class="muted">Factures, paiements, reçus, dépenses.</p></div>
-    <div><strong>Agent de livraison</strong><p class="muted">Uniquement ses livraisons et leur confirmation.</p></div>
+    <div><strong>Responsable</strong><p class="muted">Tout, sauf les utilisateurs et les paramètres.</p></div>
+    <div><strong>Comptoir</strong><p class="muted">Reçoit et pèse les colis, imprime les étiquettes, les met dans un vol.</p></div>
+    <div><strong>Logistique</strong><p class="muted">Crée les vols, confirme départs et arrivées, remet les colis, note les dépenses.</p></div>
+    <div><strong>Caisse</strong><p class="muted">Fait les factures, encaisse, donne les reçus, note les dépenses.</p></div>
+    <div><strong>Livreur</strong><p class="muted">Voit seulement ses livraisons et dit quand c’est remis.</p></div>
   </div>
 </section>

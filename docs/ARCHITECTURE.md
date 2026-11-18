@@ -91,7 +91,7 @@ Tables : `users`, `roles`, `clients`, `parcels`, `parcel_attachments`, `shipment
 - Échéancier (acompte / plusieurs échéances) : la somme doit égaler le total pour valider.
 
 ### Paiements
-- Montant > 0 et ≤ solde restant ; référence obligatoire sauf espèces ; référence unique par moyen ; jeton de
+- Montant > 0 et ≤ solde restant ; référence facultative, unique par moyen quand elle est saisie ; jeton de
   formulaire unique contre le double clic.
 - Statut de facture recalculé : Validée → Partiellement payée → Payée.
 - Correction = écriture de contrepassation négative liée (une seule par paiement), motif obligatoire.

@@ -20,7 +20,7 @@ def new_parcel(pg, desc, kg='4,2'):
     pg.fill('#description', desc); pg.fill('#weight_kg', kg)
     pg.select_option('#tariff_id', index=1)
     pg.click('form[data-parcel-form] button.btn-primary'); pg.wait_for_load_state('networkidle')
-    return pg.inner_text('h1').strip(), pg.url
+    return pg.inner_text('h1').strip(), pg.url.split('?')[0]
 
 with sync_playwright() as p:
     b = p.chromium.launch()
@@ -41,8 +41,8 @@ with sync_playwright() as p:
     login(pg, 'logistique@diarrassouba.test')
     if pg.locator('.quick a:has-text("Charger le vol")').count() == 0:
         # Aucun vol en préparation (base déjà utilisée) : le raccourci propose d'en préparer un
-        check('Tableau de bord : raccourci « Préparer un vol » sans dossier ouvert', pg.locator('.quick a:has-text("Préparer un vol")').count() == 1)
-        pg.click('.quick a:has-text("Préparer un vol")'); pg.wait_for_load_state('networkidle')
+        check('Accueil : raccourci « Créer un vol » sans vol ouvert', pg.locator('.quick a:has-text("Créer un vol")').count() == 1)
+        pg.click('.quick a:has-text("Créer un vol")'); pg.wait_for_load_state('networkidle')
         pg.fill('#airline', 'EgyptAir'); pg.fill('#flight_number', 'MS 901')
         pg.click('form.panel button.btn-primary'); pg.wait_for_load_state('networkidle')
         pg.goto(B + '/tableau-de-bord'); pg.wait_for_load_state('networkidle')
@@ -57,11 +57,11 @@ with sync_playwright() as p:
     # Scan douchette : code tapé en minuscules sans tirets + Entrée
     pg.fill('#scan-code', code1.lower().replace('-', '')); pg.press('#scan-code', 'Enter'); pg.wait_for_load_state('networkidle')
     flash = pg.inner_text('main')
-    check('Scan : colis ajouté, total affiché', 'ajouté au dossier' in flash and 'total' in flash, flash[:200])
+    check('Scan : colis ajouté, total affiché', 'dans le vol' in flash and 'en tout' in flash, flash[:200])
     check('Scan : colis visible dans la liste du dossier', code1 in pg.inner_text('table'))
     check('Scan : champ prêt pour le colis suivant (focus)', pg.evaluate("document.activeElement && document.activeElement.id") == 'scan-code')
     pg.fill('#scan-code', code1); pg.press('#scan-code', 'Enter'); pg.wait_for_load_state('networkidle')
-    check('Re-scan du même colis : averti « déjà dans ce dossier »', 'déjà dans ce dossier' in pg.inner_text('main'))
+    check('Re-scan du même colis : averti « déjà dans ce vol »', 'déjà dans ce vol' in pg.inner_text('main'))
     pg.fill('#scan-code', 'DI-ZZZZ-ZZZZ'); pg.press('#scan-code', 'Enter'); pg.wait_for_load_state('networkidle')
     check('Code inconnu : message clair', 'Aucun colis ne porte le code' in pg.inner_text('main'))
 
@@ -100,8 +100,8 @@ with sync_playwright() as p:
     pg.on('pageerror', lambda e: errs.append(str(e)))
     login(pg, 'logistique@diarrassouba.test')
     pg.goto(url3); pg.wait_for_load_state('networkidle')
-    link = pg.locator('.load-panel a:has-text("Créer le dossier du vol")')
-    check('Sans vol ouvert : bouton « Créer le dossier du vol »', link.count() == 1)
+    link = pg.locator('.load-panel a:has-text("Créer un vol")')
+    check('Sans vol ouvert : bouton « Créer un vol »', link.count() == 1)
     link.click(); pg.wait_for_load_state('networkidle')
     check('Formulaire : destination préremplie', pg.input_value('#destination_country') == 'CI' and pg.input_value('#destination_city') != '')
     ctx.close()

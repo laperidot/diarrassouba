@@ -32,25 +32,33 @@ final class ClientService
         return $this->find($id) ?? throw new BusinessException('Client introuvable.');
     }
 
-    /** Recherche par nom, code client ou téléphone. */
-    public function search(string $q, int $limit = 30, int $offset = 0, bool $withArchived = false): array
+    /** Rôles d'un client dans les colis : filtre de la liste des clients. */
+    public const ROLES = ['sender' => 'Expéditeurs', 'recipient' => 'Destinataires'];
+
+    /** Recherche par nom, code client ou téléphone ; $role limite aux expéditeurs ou aux destinataires. */
+    public function search(string $q, int $limit = 30, int $offset = 0, bool $withArchived = false, string $role = ''): array
     {
-        [$where, $params] = $this->searchWhere($q, $withArchived);
+        [$where, $params] = $this->searchWhere($q, $withArchived, $role);
         $sql = "SELECT c.*,
-                  (SELECT COUNT(*) FROM parcels p WHERE p.sender_id = c.id OR p.recipient_id = c.id) AS parcel_count
+                  (SELECT COUNT(*) FROM parcels p WHERE p.sender_id = c.id OR p.recipient_id = c.id) AS parcel_count,
+                  (SELECT COUNT(*) FROM parcels p WHERE p.sender_id = c.id) AS sent_count,
+                  (SELECT COUNT(*) FROM parcels p WHERE p.recipient_id = c.id) AS received_count
                 FROM clients c WHERE $where ORDER BY c.updated_at DESC LIMIT $limit OFFSET $offset";
         return $this->db->all($sql, $params);
     }
 
-    public function count(string $q, bool $withArchived = false): int
+    public function count(string $q, bool $withArchived = false, string $role = ''): int
     {
-        [$where, $params] = $this->searchWhere($q, $withArchived);
+        [$where, $params] = $this->searchWhere($q, $withArchived, $role);
         return (int) $this->db->value("SELECT COUNT(*) FROM clients c WHERE $where", $params);
     }
 
-    private function searchWhere(string $q, bool $withArchived): array
+    private function searchWhere(string $q, bool $withArchived, string $role = ''): array
     {
         $where = $withArchived ? '1=1' : 'c.archived_at IS NULL';
+        if ($role === 'sender' || $role === 'recipient') {
+            $where .= " AND EXISTS (SELECT 1 FROM parcels p WHERE p.{$role}_id = c.id)";
+        }
         $params = [];
         $q = trim($q);
         if ($q !== '') {
@@ -65,6 +73,37 @@ final class ClientService
             $where .= ')';
         }
         return [$where, $params];
+    }
+
+    /** Versements d'un client (relevé partagé), du plus récent au plus ancien. */
+    public function statementPayments(int $id): array
+    {
+        return $this->db->all(
+            "SELECT pay.paid_at, pay.method, pay.amount_minor, pay.currency, pay.receipt_number, i.number AS invoice_number
+             FROM payments pay JOIN invoices i ON i.id = pay.invoice_id
+             WHERE i.client_id = ? AND i.status NOT IN ('draft','cancelled') ORDER BY pay.paid_at DESC, pay.id DESC",
+            [$id]
+        );
+    }
+
+    /** Factures validées d'un client avec les codes des colis facturés (relevé partagé). */
+    public function statementInvoices(int $id): array
+    {
+        return $this->db->all(
+            "SELECT i.id, i.number, i.status, i.issue_date, i.due_date, i.currency, i.total_minor, i.paid_minor,
+                    (SELECT GROUP_CONCAT(ii.tracking_code) FROM invoice_items ii WHERE ii.invoice_id = i.id) AS codes
+             FROM invoices i WHERE i.client_id = ? AND i.kind = 'invoice' AND i.status NOT IN ('draft','cancelled')
+             ORDER BY i.issue_date DESC, i.id DESC",
+            [$id]
+        );
+    }
+
+    /** Rôle du client dans les colis : 'sender', 'recipient', 'both' ou ''. */
+    public function role(int $id): string
+    {
+        $sent = (int) $this->db->value('SELECT COUNT(*) FROM parcels WHERE sender_id = ?', [$id]);
+        $received = (int) $this->db->value('SELECT COUNT(*) FROM parcels WHERE recipient_id = ?', [$id]);
+        return $sent && $received ? 'both' : ($sent ? 'sender' : ($received ? 'recipient' : ''));
     }
 
     /** Doublons probables : même téléphone, ou même nom exact. */
@@ -164,7 +203,7 @@ final class ClientService
         if ($id) {
             $c = $this->find($id);
             if (!$c || $c['archived_at']) {
-                throw new ValidationException([$field => 'Client introuvable ou archivé.']);
+                throw new ValidationException([$field => 'Client introuvable ou rangé.']);
             }
             return ['id' => $id, 'reused' => true, 'created' => false];
         }

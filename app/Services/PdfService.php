@@ -9,218 +9,343 @@ use App\Core\Money;
 use App\Core\Pdf;
 use App\Core\Settings;
 
-/** Mise en page des documents PDF : factures/avoirs, reçus, étiquettes colis. */
+/** Mise en page des documents PDF : factures/avoirs, reçus, relevés de compte, étiquettes colis. */
 final class PdfService
 {
-    // Palette « Air Waybill » (voir docs/DESIGN.md)
-    private const INK = '#121419';
-    private const MUTED = '#6A6356';
-    private const RULE = '#E2D9C8';
-    private const ACCENT = '#B53A0A';   // numéros de document (orange aviation, version texte)
-    private const BAND = '#FF5A1F';     // bande de tête
-    private const TINT = '#F5F0E6';     // fonds de zones (kraft)
-    private const POSITIVE = '#0C7550'; // solde réglé
-    private const NEGATIVE = '#B12A1F'; // solde dû
+    // Palette « Air Waybill », version document (voir docs/DESIGN.md) : bandeau nuit à coupe oblique, filets orange, feuillet blanc
+    private const INK = '#15171C';
+    private const MUTED = '#5E6470';
+    private const RULE = '#E3E6EB';
+    private const WHITE = '#FFFFFF';
+    private const NIGHT = '#14171D';          // bandeaux, en-têtes de tableau, étiquettes de bloc
+    private const ON_NIGHT_MUTED = '#A9AEB8';
+    private const BAND = '#FF5A1F';           // filets, pan de la colonne montant, total
+    private const BAND_DIM = '#6B2E15';       // second filet, sur fond nuit
+    private const ACCENT = '#B53A0A';         // orange aviation, version texte sur blanc
+    private const ZEBRA = '#F4F5F7';          // lignes alternées
+    private const POSITIVE = '#0C7550';       // solde réglé
+    private const SETTLED = '#2CC28A';        // bloc « soldé »
+    private const NEGATIVE = '#B12A1F';       // solde dû
 
-    private function header(Pdf $pdf, string $docTitle, string $number, array $meta): float
+    /**
+     * Bandeau de tête : société sur fond nuit à gauche, titre et numéro du document à droite,
+     * filets orange obliques ; un liseré orange prolonge la coupe sous le bandeau.
+     * Retourne l'ordonnée sous le liseré.
+     */
+    private function header(Pdf $pdf, string $docTitle, string $number, float $m = 40, float $h = 104): float
     {
         $w = $pdf->pageWidth();
-        $pdf->rect(0, 0, $w, 6, self::BAND);
-        $pdf->font('B', 15);
-        $pdf->text(40, 34, (string) Config::get('APP_NAME', 'DIARRASSOUBA IMPORT-EXPORT'), self::INK);
-        $pdf->font('R', 8.5);
-        $y = 54;
-        foreach (array_filter([
+        $small = $h < 100;   // format A5 (reçu) : bandeau plus bas, coupe décalée pour laisser place au nom
+        $x = $w * ($small ? 0.62 : 0.55);
+        $s = $h / 2; // décalage horizontal de la coupe
+        $pdf->rect(0, 0, $w, $h, self::NIGHT);
+        $pdf->polygon([[$x, 0], [$x + 22, 0], [$x + 22 - $s, $h], [$x - $s, $h]], self::BAND);
+        $pdf->polygon([[$x + 32, 0], [$x + 38, 0], [$x + 38 - $s, $h], [$x + 32 - $s, $h]], self::BAND_DIM);
+        $pdf->polygon([[0, $h], [$x - $s, $h], [$x - $s - 5, $h + 10], [0, $h + 10]], self::BAND);
+
+        $pdf->font('B', $small ? 12 : 15);
+        $pdf->text($m, $small ? 20 : 26, (string) Config::get('APP_NAME', 'DIARRASSOUBA IMPORT-EXPORT'), self::WHITE);
+        $contact = trim(Settings::get('COMPANY_PHONE') . '   ' . Settings::get('COMPANY_EMAIL', ''));
+        $lines = $small ? [Settings::get('COMPANY_ADDRESS'), $contact] : [
             Config::get('COMPANY_TAGLINE', 'Transport aérien de colis — Égypte, Côte d’Ivoire, Afrique de l’Ouest'),
-            Config::get('COMPANY_ADDRESS'),
-            trim(Settings::get('COMPANY_PHONE') . '   ' . Config::get('COMPANY_EMAIL', '')),
-            Config::get('COMPANY_LEGAL'),
-        ]) as $line) {
-            $pdf->text(40, $y, $line, self::MUTED);
-            $y += 11.5;
+            Settings::get('COMPANY_ADDRESS'), $contact, Settings::get('COMPANY_LEGAL'),
+        ];
+        $pdf->font('R', $small ? 7.5 : 8);
+        $y = $small ? 39 : 48;
+        foreach (array_filter($lines) as $line) {
+            foreach ($pdf->wrap((string) $line, $x - $s - $m - 30) as $l) {
+                if ($y > $h - 16) {
+                    break 2;
+                }
+                $pdf->text($m, $y, $l, self::ON_NIGHT_MUTED);
+                $y += $small ? 10 : 11;
+            }
         }
-        $pdf->font('B', 18);
-        $pdf->textRight($w - 40, 30, $docTitle, self::INK);
-        $pdf->font('B', 11);
-        $pdf->textRight($w - 40, 54, $number, self::ACCENT);
-        $pdf->font('R', 8.5);
-        $my = 70;
-        foreach ($meta as $k => $v) {
-            $pdf->textRight($w - 40, $my, "$k : $v", self::MUTED);
-            $my += 11.5;
-        }
-        $y = max($y, $my) + 14;
-        $pdf->line(40, $y, $w - 40, $y, self::RULE, 0.8);
-        return $y + 16;
+
+        $size = $small ? 20 : 24;
+        do {
+            $pdf->font('B', $size);
+        } while ($pdf->textWidth($docTitle) > $w - $m - $x - 30 && --$size > 12);
+        $pdf->textRight($w - $m, $small ? 18 : 24, $docTitle, self::BAND);
+        $pdf->font('B', $small ? 9.5 : 10.5);
+        $pdf->textRight($w - $m, $small ? 48 : 58, $number, self::WHITE);
+        return $h + 10;
     }
 
-    private function footer(Pdf $pdf, string $text): void
+    /** Page suivante d'un long document : liseré de tête réduit ; le pied de la page quittée annonce la suite. */
+    private function continuation(Pdf $pdf, string $title): float
     {
+        $this->footer($pdf, 'Suite page suivante.');
+        $pdf->addPage();
+        $w = $pdf->pageWidth();
+        $x = $w * 0.55;
+        $pdf->rect(0, 0, $w, 30, self::NIGHT);
+        $pdf->polygon([[$x, 0], [$x + 22, 0], [$x + 7, 30], [$x - 15, 30]], self::BAND);
+        $pdf->font('B', 9.5);
+        $pdf->text(40, 10, $title . ' (suite)', self::WHITE);
+        return 56;
+    }
+
+    /** Pied de page : note au-dessus, bandeau nuit avec pan orange oblique (téléphone), e-mail et adresse de suivi. */
+    private function footer(Pdf $pdf, string $note = '', float $m = 40): void
+    {
+        $w = $pdf->pageWidth();
+        $bottom = $pdf->pageHeight();
+        $h = 28;
+        if ($note !== '') {
+            $pdf->font('R', 7.5);
+            $lines = $pdf->wrap($note, $w - 2 * $m);
+            $ny = $bottom - $h - 16 - 9 * (count($lines) - 1);
+            foreach ($lines as $l) {
+                $pdf->text($m, $ny, $l, self::MUTED);
+                $ny += 9;
+            }
+        }
+        $pdf->rect(0, $bottom - $h, $w, $h, self::NIGHT);
+        $ox = $w * 0.38;
+        $pdf->polygon([[0, $bottom - $h], [$ox, $bottom - $h], [$ox - $h / 2, $bottom], [0, $bottom]], self::BAND);
+        $pdf->font('B', 8.5);
+        $pdf->text($m, $bottom - $h + 10, (string) Settings::get('COMPANY_PHONE'), self::NIGHT);
         $pdf->font('R', 7.5);
-        $pdf->line(40, $pdf->pageHeight() - 46, $pdf->pageWidth() - 40, $pdf->pageHeight() - 46, self::RULE);
-        $pdf->text(40, $pdf->pageHeight() - 38, $text, self::MUTED);
+        $track = 'Suivi : ' . preg_replace('#^https?://#', '', absolute_url('suivi'));
+        $right = implode('   ·   ', array_filter([Settings::get('COMPANY_EMAIL'), $track]));
+        if ($pdf->textWidth($right) > $w - $ox - $m - 10) {
+            $right = $track;
+        }
+        $pdf->textRight($w - $m, $bottom - $h + 10.5, $right, self::WHITE);
+    }
+
+    /** Étiquette de bloc en capitales : blanc sur fond nuit, ombre orange décalée. Retourne l'ordonnée du contenu. */
+    private function tag(Pdf $pdf, float $x, float $y, string $label): float
+    {
+        $label = mb_strtoupper($label);
+        $pdf->font('B', 7.5);
+        $tw = $pdf->textWidth($label) + 14;
+        $pdf->rect($x + 3, $y + 3, $tw, 15, self::BAND);
+        $pdf->rect($x, $y, $tw, 15, self::NIGHT);
+        $pdf->text($x + 7, $y + 4.2, $label, self::WHITE);
+        return $y + 27;
+    }
+
+    /** Bloc client : étiquette, nom, coordonnées. Retourne l'ordonnée sous le bloc. */
+    private function party(Pdf $pdf, float $x, float $y, float $width, string $label, array $c): float
+    {
+        $y = $this->tag($pdf, $x, $y, $label);
+        $pdf->font('B', 12.5);
+        foreach (array_slice($pdf->wrap((string) $c['name'], $width), 0, 2) as $l) {
+            $pdf->text($x, $y, $l, self::INK);
+            $y += 15;
+        }
+        $pdf->font('R', 8.5);
+        $y += 2;
+        foreach (array_filter([
+            'Client ' . ($c['code'] ?? ''), $c['phone'] ?? null, $c['email'] ?? null,
+            trim(($c['address'] ?? '') . ' ' . ($c['city'] ?? '')),
+        ]) as $l) {
+            $pdf->text($x, $y, $l, self::MUTED);
+            $y += 11.5;
+        }
+        return $y;
+    }
+
+    /** Références du document, puces orange, alignées sur la marge droite. */
+    private function meta(Pdf $pdf, float $y, array $meta, float $m = 40, float $width = 210): float
+    {
+        $w = $pdf->pageWidth();
+        foreach ($meta as $k => $v) {
+            $pdf->rect($w - $m - $width, $y + 2.2, 5, 5, self::BAND);
+            $pdf->font('R', 8.5);
+            $pdf->text($w - $m - $width + 12, $y, (string) $k, self::MUTED);
+            $pdf->font('B', 8.5);
+            $pdf->textRight($w - $m, $y, (string) $v, self::INK);
+            $y += 14;
+        }
+        return $y;
+    }
+
+    /**
+     * En-tête de tableau : bande nuit, dernière colonne sur un pan orange à coupe oblique.
+     * $cols : [libellé, x, 'L'|'R'] (x = bord gauche, ou bord droit pour 'R') ; $panX : début du pan orange.
+     */
+    private function tableHead(Pdf $pdf, float $y, array $cols, float $panX, float $l = 40, ?float $r = null): float
+    {
+        $r ??= $pdf->pageWidth() - $l;
+        $pdf->rect($l, $y, $r - $l, 22, self::NIGHT);
+        $pdf->polygon([[$panX + 11, $y], [$r, $y], [$r, $y + 22], [$panX, $y + 22]], self::BAND);
+        $pdf->font('B', 7.5);
+        $last = count($cols) - 1;
+        foreach (array_values($cols) as $i => [$label, $x, $align]) {
+            $label = mb_strtoupper($label);
+            $color = $i === $last ? self::NIGHT : self::WHITE;
+            $align === 'R' ? $pdf->textRight($x, $y + 7.5, $label, $color) : $pdf->text($x, $y + 7.5, $label, $color);
+        }
+        return $y + 22;
+    }
+
+    /** Ligne de total mise en avant : pan à coupe oblique (orange, ou vert quand le solde est nul), texte nuit. */
+    private function totalBlock(Pdf $pdf, float $x, float $y, float $r, string $label, string $amount, string $fill = self::BAND): float
+    {
+        $h = 26;
+        $pdf->polygon([[$x + 10, $y], [$r, $y], [$r, $y + $h], [$x, $y + $h]], $fill);
+        $pdf->font('B', 9.5);
+        $pdf->text($x + 16, $y + 9, mb_strtoupper($label), self::NIGHT);
+        $pdf->font('B', 12);
+        $pdf->textRight($r - 10, $y + 8, $amount, self::NIGHT);
+        return $y + $h;
+    }
+
+    /** Ligne de récapitulatif (libellé à gauche, montant à droite, filet dessous). */
+    private function sumRow(Pdf $pdf, float $x, float $y, float $r, string $label, string $amount, string $color = self::INK, bool $bold = false): float
+    {
+        $pdf->font($bold ? 'B' : 'R', $bold ? 10 : 9);
+        $pdf->text($x, $y, $label, $bold ? self::INK : self::MUTED);
+        $pdf->textRight($r - 10, $y, $amount, $color);
+        $pdf->line($x, $y + 14, $r, $y + 14, self::RULE, 0.5);
+        return $y + 20;
+    }
+
+    /** Zone de signature à droite. */
+    private function signature(Pdf $pdf, float $y, float $r, string $caption): void
+    {
+        $pdf->line($r - 170, $y, $r, $y, self::INK, 0.6);
+        $pdf->font('R', 7.5);
+        $pdf->textCenter($r - 85, $y + 5, $caption, self::MUTED);
     }
 
     public function invoice(array $inv, array $items, array $payments, array $installments): string
     {
         $isCredit = $inv['kind'] === 'credit_note';
         $cur = $inv['currency'];
+        $name = ($isCredit ? 'Annulation ' : 'Facture ') . ($inv['number'] ?? 'brouillon');
         $pdf = new Pdf();
-        $pdf->setTitle(($isCredit ? 'Avoir ' : 'Facture ') . ($inv['number'] ?? 'brouillon'));
+        $pdf->setTitle($name);
         $pdf->addPage();
-        $meta = [
-            'Date' => d($inv['issue_date'] ?? null),
-        ];
-        if (!$isCredit) {
-            $meta['Échéance'] = d($inv['due_date']);
-        } else {
-            $meta['Sur facture'] = $inv['credit_of_number'] ?? '—';
-        }
-        if ($inv['shipment_reference']) {
-            $meta['Dossier'] = $inv['shipment_reference'];
-        }
-        $title = $isCredit ? 'AVOIR' : ($inv['status'] === 'draft' ? 'BROUILLON' : 'FACTURE');
-        $y = $this->header($pdf, $title, $inv['number'] ?? 'Non numérotée', $meta);
+        $l = 40;
+        $r = $pdf->pageWidth() - 40;
+        $title = $isCredit ? 'ANNULATION' : ($inv['status'] === 'draft' ? 'BROUILLON' : 'FACTURE');
+        $y = $this->header($pdf, $title, 'N° ' . ($inv['number'] ?? 'pas encore attribué')) + 24;
 
-        // Client (instantané figé à la validation)
+        // Client (instantané figé à la validation) et références
         $client = $inv['client_snapshot'] ? json_decode($inv['client_snapshot'], true) : [
             'name' => $inv['client_name'], 'code' => $inv['client_code'], 'phone' => $inv['client_phone'],
             'address' => $inv['client_address'], 'city' => $inv['client_city'], 'email' => $inv['client_email'],
         ];
-        $pdf->font('R', 8);
-        $pdf->text(40, $y, 'Facturé à', self::MUTED);
-        $pdf->font('B', 11);
-        $pdf->text(40, $y + 12, (string) $client['name'], self::INK);
-        $pdf->font('R', 9);
-        $cy = $y + 28;
-        foreach (array_filter([
-            'Client ' . ($client['code'] ?? ''), $client['phone'] ?? null, $client['email'] ?? null,
-            trim(($client['address'] ?? '') . ' ' . ($client['city'] ?? '')),
-        ]) as $l) {
-            $pdf->text(40, $cy, $l, self::INK);
-            $cy += 12;
-        }
-        if ($inv['payment_terms']) {
-            $pdf->font('R', 8);
-            $pdf->text(330, $y, 'Modalité de paiement', self::MUTED);
-            $pdf->font('B', 9.5);
-            $pdf->text(330, $y + 12, Domain::PAYMENT_TERMS[$inv['payment_terms']] ?? '', self::INK);
-        }
-        $y = max($cy, $y + 50) + 14;
-
-        // Tableau des lignes
-        $cols = [40 => 'Colis', 128 => 'Désignation', 330 => 'Poids fact.', 395 => 'Tarif / kg', 470 => 'Montant'];
-        $right = 555;
-        $pdf->rect(40, $y, $right - 40, 20, self::TINT);
-        $pdf->font('B', 8);
-        foreach ($cols as $x => $label) {
-            in_array($x, [330, 395, 470], true) ? $pdf->textRight($x === 470 ? $right - 6 : $x + 58, $y + 6, $label, self::MUTED) : $pdf->text($x + 6, $y + 6, $label, self::MUTED);
-        }
-        $y += 26;
-        foreach ($items as $it) {
-            if ($y > 700) {
-                $this->footer($pdf, 'Suite page suivante');
-                $pdf->addPage();
-                $y = 50;
+        $meta = ['Date' => d($inv['issue_date'] ?? null)];
+        if ($isCredit) {
+            $meta['Annule la facture'] = $inv['credit_of_number'] ?? '—';
+        } else {
+            $meta['À payer avant le'] = d($inv['due_date']);
+            if ($inv['payment_terms']) {
+                $meta['Paiement'] = Domain::PAYMENT_TERMS[$inv['payment_terms']] ?? '';
             }
-            $pdf->font('B', 8.5);
-            $pdf->text(46, $y, (string) ($it['tracking_code'] ?? '—'), self::INK);
+        }
+        if ($inv['shipment_reference']) {
+            $meta['Vol'] = $inv['shipment_reference'];
+        }
+        $y = max($this->party($pdf, $l, $y, 260, $isCredit ? 'Pour' : 'Facturé à', $client), $this->meta($pdf, $y + 4, $meta)) + 20;
+
+        // Lignes : une par colis, lignes alternées
+        $cols = [['Colis', $l + 10, 'L'], ['Contenu', 128, 'L'], ['Poids', 382, 'R'], ['Prix / kilo', 450, 'R'], ['Prix', $r - 10, 'R']];
+        $y = $this->tableHead($pdf, $y, $cols, 462);
+        foreach (array_values($items) as $n => $it) {
             $pdf->font('R', 8.5);
-            $descLines = $pdf->wrap((string) $it['description'], 195);
-            $pdf->text(134, $y, $descLines[0], self::INK);
-            $pdf->textRight(388, $y, kg((int) $it['billable_weight_g']), self::INK);
-            $pdf->textRight(453, $y, Money::format((int) $it['rate_per_kg_minor'], $cur, false), self::INK);
-            $pdf->textRight($right - 6, $y, Money::format((int) $it['transport_minor'], $cur, false), self::INK);
-            $y += 13;
-            foreach (array_slice($descLines, 1, 2) as $l) {
-                $pdf->text(134, $y, $l, self::MUTED);
-                $y += 11;
+            $desc = array_slice($pdf->wrap((string) $it['description'], 190), 0, 3);
+            $fees = (int) $it['fees_minor'] !== 0;
+            $rh = 27 + (count($desc) - 1) * 11 + ($fees ? 12 : 0);
+            if ($y + $rh > 700) {
+                $y = $this->tableHead($pdf, $this->continuation($pdf, $name), $cols, 462);
             }
-            if ((int) $it['fees_minor'] !== 0) {
+            if ($n % 2 === 1) {
+                $pdf->rect($l, $y, $r - $l, $rh, self::ZEBRA);
+            }
+            $ty = $y + 7;
+            $pdf->font('B', 8.5);
+            $pdf->text($l + 10, $ty, (string) ($it['tracking_code'] ?? '—'), self::INK);
+            $pdf->textRight($r - 10, $ty, Money::format((int) $it['transport_minor'], $cur, false), self::INK);
+            $pdf->font('R', 8.5);
+            $pdf->text(128, $ty, $desc[0], self::INK);
+            $pdf->textRight(382, $ty, kg((int) $it['billable_weight_g']), self::INK);
+            $pdf->textRight(450, $ty, Money::format((int) $it['rate_per_kg_minor'], $cur, false), self::INK);
+            $ty += 13;
+            foreach (array_slice($desc, 1) as $line) {
+                $pdf->text(128, $ty, $line, self::MUTED);
+                $ty += 11;
+            }
+            if ($fees) {
                 $pdf->font('R', 8);
-                $pdf->text(134, $y, '+ ' . ($it['fees_label'] ?: 'Frais supplémentaires'), self::MUTED);
-                $pdf->textRight($right - 6, $y, Money::format((int) $it['fees_minor'], $cur, false), self::MUTED);
-                $y += 12;
+                $pdf->text(128, $ty, '+ ' . ($it['fees_label'] ?: 'Frais supplémentaires'), self::MUTED);
+                $pdf->textRight($r - 10, $ty, Money::format((int) $it['fees_minor'], $cur, false), self::MUTED);
             }
-            $pdf->line(40, $y + 2, $right, $y + 2, self::RULE, 0.4);
-            $y += 9;
+            $y += $rh;
         }
+        $pdf->line($l, $y, $r, $y, self::NIGHT, 1.2);
 
-        // Totaux
-        $y += 8;
-        $tx = 360;
-        $rows = [['Transport', (int) $inv['subtotal_minor']]];
+        // Totaux (à droite)
+        $y += 18;
+        if ($y > 590) {
+            $y = $this->continuation($pdf, $name);
+        }
+        $top = $y;
+        $tx = 345;
+        $y = $this->sumRow($pdf, $tx, $y, $r, 'Transport', Money::format((int) $inv['subtotal_minor'], $cur));
         if ((int) $inv['fees_minor'] !== 0) {
-            $rows[] = ['Frais supplémentaires', (int) $inv['fees_minor']];
+            $y = $this->sumRow($pdf, $tx, $y, $r, 'Frais en plus', Money::format((int) $inv['fees_minor'], $cur));
         }
         if ((int) $inv['tax_rate_bp'] > 0) {
-            $rows[] = ['Taxe ' . rtrim(rtrim(number_format($inv['tax_rate_bp'] / 100, 2, ',', ''), '0'), ',') . ' %', (int) $inv['tax_minor']];
+            $rate = rtrim(rtrim(number_format($inv['tax_rate_bp'] / 100, 2, ',', ''), '0'), ',');
+            $y = $this->sumRow($pdf, $tx, $y, $r, 'Taxe ' . $rate . ' %', Money::format((int) $inv['tax_minor'], $cur));
         }
-        $pdf->font('R', 9);
-        foreach ($rows as [$label, $v]) {
-            $pdf->text($tx, $y, $label, self::MUTED);
-            $pdf->textRight($right - 6, $y, Money::format($v, $cur), self::INK);
-            $y += 15;
-        }
-        $pdf->rect($tx - 8, $y - 2, $right - $tx + 8, 26, self::INK);
-        $pdf->font('B', 11);
-        $pdf->text($tx, $y + 6, $isCredit ? 'Total de l’avoir' : 'Total à payer', '#FFFFFF');
-        $pdf->textRight($right - 6, $y + 6, Money::format((int) $inv['total_minor'], $cur), '#FFFFFF');
-        $y += 36;
+        $y = $this->totalBlock($pdf, $tx - 14, $y, $r, $isCredit ? 'Total annulé' : 'Total à payer', Money::format((int) $inv['total_minor'], $cur)) + 14;
         if (!$isCredit && $inv['status'] !== 'draft') {
-            $pdf->font('R', 9);
-            $pdf->text($tx, $y, 'Déjà réglé', self::MUTED);
-            $pdf->textRight($right - 6, $y, Money::format((int) $inv['paid_minor'], $cur), self::INK);
-            $y += 15;
-            $pdf->font('B', 10);
             $balance = in_array($inv['status'], ['credited', 'cancelled'], true) ? 0 : (int) $inv['total_minor'] - (int) $inv['paid_minor'];
-            $pdf->text($tx, $y, 'Solde restant', self::INK);
-            $pdf->textRight($right - 6, $y, Money::format($balance, $cur), $balance > 0 ? self::NEGATIVE : self::POSITIVE);
-            $y += 18;
+            $y = $this->sumRow($pdf, $tx, $y, $r, 'Déjà payé', Money::format((int) $inv['paid_minor'], $cur));
+            $y = $this->sumRow($pdf, $tx, $y, $r, 'Reste à payer', Money::format($balance, $cur), $balance > 0 ? self::NEGATIVE : self::POSITIVE, true);
         }
 
-        // Échéancier et règlements (colonne gauche)
-        $ly = $y - (count($rows) * 15 + 70);
-        $ly = max($ly, $y - 120);
-        $leftY = $ly;
-        if ($installments) {
-            $pdf->font('B', 8.5);
-            $pdf->text(40, $leftY, 'Échéancier', self::INK);
-            $leftY += 13;
+        // Règlement, échéancier et paiements reçus (à gauche)
+        $ly = $top;
+        if (!$isCredit) {
+            $ly = $this->tag($pdf, $l, $ly, 'Comment payer');
             $pdf->font('R', 8.5);
-            foreach ($installments as $ins) {
-                $pdf->text(40, $leftY, d($ins['due_date']) . ($ins['label'] ? '  ' . $ins['label'] : ''), self::INK);
-                $pdf->textRight(300, $leftY, Money::format((int) $ins['amount_minor'], $cur), self::INK);
-                $leftY += 12;
+            $ly = $pdf->paragraph($l, $ly, 270, (string) Settings::get('COMPANY_PAYMENT_INFO', 'Espèces, Mobile Money ou virement.'), 1.35, self::INK);
+            if ($inv['number']) {
+                $ly = $pdf->paragraph($l, $ly, 270, 'Donnez le numéro ' . $inv['number'] . ' quand vous payez.', 1.35, self::MUTED);
             }
-            $leftY += 8;
+            $ly += 10;
         }
-        if ($payments) {
-            $pdf->font('B', 8.5);
-            $pdf->text(40, $leftY, 'Règlements reçus', self::INK);
-            $leftY += 13;
+        foreach ([['Paiement en plusieurs fois', $installments], ['Paiements reçus', $payments]] as [$label, $list]) {
+            if (!$list) {
+                continue;
+            }
+            $ly = $this->tag($pdf, $l, $ly, $label);
             $pdf->font('R', 8.5);
-            foreach ($payments as $p) {
-                $pdf->text(40, $leftY, dt($p['paid_at'], 'd/m/Y') . '  ' . $p['receipt_number'] . '  ' . (Domain::PAYMENT_METHODS[$p['method']] ?? $p['method']), self::INK);
-                $pdf->textRight(300, $leftY, Money::format((int) $p['amount_minor'], $cur), self::INK);
-                $leftY += 12;
+            foreach ($list as $row) {
+                $text = isset($row['receipt_number'])
+                    ? dt($row['paid_at'], 'd/m/Y') . '  ' . $row['receipt_number'] . '  ' . (Domain::PAYMENT_METHODS[$row['method']] ?? $row['method'])
+                    : d($row['due_date']) . ($row['label'] ? '  ' . $row['label'] : '');
+                $pdf->text($l, $ly, $text, self::INK);
+                $pdf->textRight($l + 270, $ly, Money::format((int) $row['amount_minor'], $cur), self::INK);
+                $ly += 12.5;
             }
+            $ly += 10;
         }
-        $y = max($y, $leftY) + 20;
+
+        $y = max($y, $ly) + 8;
         if ($inv['status'] === 'cancelled' || $inv['status'] === 'credited') {
             $pdf->font('B', 10);
-            $pdf->text(40, $y, ($inv['status'] === 'credited' ? 'Facture annulée par avoir' : 'Facture annulée') . ' le ' . dt($inv['cancelled_at'], 'd/m/Y') . ' : ' . ($inv['cancel_reason'] ?? ''), self::NEGATIVE);
-            $y += 18;
+            $y = $pdf->paragraph($l, $y, $r - $l, ($inv['status'] === 'credited' ? 'Facture annulée (facture d’annulation faite)' : 'Facture annulée') . ' le ' . dt($inv['cancelled_at'], 'd/m/Y') . ' : ' . ($inv['cancel_reason'] ?? ''), 1.35, self::NEGATIVE) + 6;
         }
         if ($inv['notes']) {
             $pdf->font('R', 8.5);
-            $y = $pdf->paragraph(40, $y, 515, (string) $inv['notes'], 1.35, self::MUTED) + 6;
+            $y = $pdf->paragraph($l, $y, $r - $l, (string) $inv['notes'], 1.35, self::MUTED) + 6;
         }
-        if ($pay = Config::get('COMPANY_PAYMENT_INFO')) {
-            $pdf->font('R', 8.5);
-            $pdf->paragraph(40, $y, 515, 'Règlement : ' . $pay, 1.35, self::MUTED);
+        if ($y > 730) {
+            $y = $this->continuation($pdf, $name);
         }
-        $this->footer($pdf, 'Montants exprimés en ' . (Domain::CURRENCIES[$cur]['label'] ?? $cur) . '. Facturation au kilogramme : poids facturable arrondi aux ' . Config::int('BILLING_WEIGHT_STEP_G', 100) . ' g supérieurs.');
+        $pdf->font('B', 11);
+        $pdf->text($l, $y + 14, 'Merci de votre confiance.', self::INK);
+        $this->signature($pdf, $y + 36, $r, 'Cachet et signature');
+        $this->footer($pdf, 'Montants en ' . (Domain::CURRENCIES[$cur]['label'] ?? $cur) . '. Prix au kilo : le poids est arrondi aux ' . Config::int('BILLING_WEIGHT_STEP_G', 100) . ' g du dessus.');
         return $pdf->output();
     }
 
@@ -230,63 +355,185 @@ final class PdfService
         $reversal = (int) $pay['amount_minor'] < 0;
         $pdf->setTitle('Reçu ' . $pay['receipt_number']);
         $pdf->addPage();
-        $w = $pdf->pageWidth();
-        $pdf->rect(0, 0, $w, 6, self::BAND);
-        $pdf->font('B', 12);
-        $pdf->text(30, 26, (string) Config::get('APP_NAME', 'DIARRASSOUBA IMPORT-EXPORT'), self::INK);
+        $m = 28;
+        $r = $pdf->pageWidth() - $m;
+        $y = $this->header($pdf, $reversal ? 'ANNULATION' : 'REÇU', 'N° ' . $pay['receipt_number'], $m, 84) + 20;
+
+        // Montant
+        $pdf->rect($m, $y, $r - $m, 58, self::ZEBRA);
+        $pdf->rect($m, $y, 5, 58, self::BAND);
         $pdf->font('R', 8);
-        $pdf->text(30, 42, trim(Settings::get('COMPANY_PHONE') . '   ' . Config::get('COMPANY_ADDRESS', '')), self::MUTED);
-        $pdf->font('B', 16);
-        $pdf->text(30, 78, $reversal ? 'Annulation de paiement' : 'Reçu de paiement', self::INK);
-        $pdf->font('B', 11);
-        $pdf->text(30, 100, $pay['receipt_number'], self::ACCENT);
-
-        $pdf->rect(30, 128, $w - 60, 64, self::TINT);
-        $pdf->font('R', 8.5);
-        $pdf->text(44, 140, $reversal ? 'Montant annulé' : 'Montant reçu', self::MUTED);
+        $pdf->text($m + 18, $y + 11, $reversal ? 'Montant annulé' : 'Montant reçu', self::MUTED);
+        $pdf->textRight($r - 14, $y + 11, dt($pay['paid_at'], 'd/m/Y à H:i'), self::MUTED);
         $pdf->font('B', 22);
-        $pdf->text(44, 156, Money::format(abs((int) $pay['amount_minor']), $pay['currency']), self::INK);
+        $pdf->text($m + 18, $y + 25, Money::format(abs((int) $pay['amount_minor']), $pay['currency']), self::INK);
+        $y += 74;
 
+        // Détail, lignes alternées
         $rows = [
-            'Date' => dt($pay['paid_at']),
             'Client' => $pay['client_name'] . ' (' . $pay['client_code'] . ')',
             'Facture' => (string) $pay['invoice_number'],
-            'Moyen de paiement' => Domain::PAYMENT_METHODS[$pay['method']] ?? $pay['method'],
-            'Référence' => $pay['reference'] ?: '—',
-            'Saisie' => ($pay['confirmation'] === 'provider' ? 'Confirmée par le prestataire' : 'Enregistrée manuellement') . ' par ' . ($pay['recorded_by_name'] ?? '—'),
+            'Payé par' => Domain::PAYMENT_METHODS[$pay['method']] ?? $pay['method'],
         ];
+        if ($pay['reference']) {
+            $rows['N° de transaction'] = $pay['reference'];
+        }
+        $rows['Enregistré'] = ($pay['confirmation'] === 'provider' ? 'Confirmé par l’opérateur' : 'À la caisse') . ', par ' . ($pay['recorded_by_name'] ?? '—');
         if ($reversal) {
             $rows['Annule le reçu'] = (string) $pay['reversal_of_receipt'];
         }
-        $y = 212;
+        $y = $this->tag($pdf, $m, $y, $reversal ? 'Détail de l’annulation' : 'Détail du paiement');
+        $n = 0;
         foreach ($rows as $k => $v) {
-            $pdf->font('R', 8.5);
-            $pdf->text(30, $y, $k, self::MUTED);
             $pdf->font('B', 9);
-            foreach ($pdf->wrap($v, $w - 170) as $i => $line) {
-                $pdf->text(140, $y + $i * 12, $line, self::INK);
+            $lines = $pdf->wrap($v, $r - $m - 130);
+            $rh = 10 + count($lines) * 12;
+            if ($n++ % 2 === 0) {
+                $pdf->rect($m, $y, $r - $m, $rh, self::ZEBRA);
             }
-            $y += 22;
-            $pdf->line(30, $y - 7, $w - 30, $y - 7, self::RULE, 0.4);
+            foreach ($lines as $i => $line) {
+                $pdf->text($m + 120, $y + 6 + $i * 12, $line, self::INK);
+            }
+            $pdf->font('R', 8.5);
+            $pdf->text($m + 10, $y + 6.5, $k, self::MUTED);
+            $y += $rh;
         }
+
+        // Situation de la facture
         $balance = in_array($inv['status'], ['credited', 'cancelled'], true) ? 0 : (int) $inv['total_minor'] - (int) $inv['paid_minor'];
-        $y += 6;
-        $pdf->font('R', 9);
-        $pdf->text(30, $y, 'Total facture', self::MUTED);
-        $pdf->textRight($w - 30, $y, Money::format((int) $inv['total_minor'], $inv['currency']), self::INK);
-        $y += 15;
-        $pdf->text(30, $y, 'Total réglé à ce jour', self::MUTED);
-        $pdf->textRight($w - 30, $y, Money::format((int) $inv['paid_minor'], $inv['currency']), self::INK);
-        $y += 15;
-        $pdf->font('B', 10);
-        $pdf->text(30, $y, 'Solde restant', self::INK);
-        $pdf->textRight($w - 30, $y, Money::format($balance, $inv['currency']), $balance > 0 ? self::NEGATIVE : self::POSITIVE);
+        $y += 16;
+        $tx = $m + 130;
+        $y = $this->sumRow($pdf, $tx, $y, $r, 'Total facture', Money::format((int) $inv['total_minor'], $inv['currency']));
+        $y = $this->sumRow($pdf, $tx, $y, $r, 'Déjà payé en tout', Money::format((int) $inv['paid_minor'], $inv['currency']));
+        $y = $this->totalBlock($pdf, $tx - 14, $y, $r, $balance > 0 ? 'Reste à payer' : 'Tout est payé', Money::format($balance, $inv['currency']), $balance > 0 ? self::BAND : self::SETTLED);
         if ($pay['notes']) {
             $pdf->font('R', 8);
-            $pdf->paragraph(30, $y + 26, $w - 60, (string) $pay['notes'], 1.35, self::MUTED);
+            $y = $pdf->paragraph($m, $y + 14, $r - $m, (string) $pay['notes'], 1.35, self::MUTED) - 14;
         }
-        $pdf->font('R', 7.5);
-        $pdf->text(30, $pdf->pageHeight() - 30, 'Document émis le ' . dt(gmdate('Y-m-d H:i:s')) . '. Conservez ce reçu.', self::MUTED);
+        $this->signature($pdf, min($y + 50, $pdf->pageHeight() - 80), $r, 'Pour la caisse');
+        $this->footer($pdf, 'Fait le ' . dt(gmdate('Y-m-d H:i:s')) . '. Gardez ce reçu.', $m);
+        return $pdf->output();
+    }
+
+    /** Relevé de compte client (données : InvoiceService::statement), un tableau par devise. */
+    public function statement(array $client, array $data): string
+    {
+        $name = 'Relevé de compte ' . $client['code'];
+        $pdf = new Pdf();
+        $pdf->setTitle($name);
+        $pdf->addPage();
+        $l = 40;
+        $r = $pdf->pageWidth() - 40;
+        $y = $this->header($pdf, 'RELEVÉ', 'Client ' . $client['code']) + 24;
+        $accounts = $data['accounts'];
+        $meta = [
+            'Fait le' => d($data['today']),
+            'Période' => $data['from'] ? 'du ' . d($data['from']) . ' au ' . d($data['to']) : 'jusqu’au ' . d($data['to']),
+        ];
+        if ($accounts) {
+            $meta[count($accounts) > 1 ? 'Monnaies' : 'Monnaie'] = implode(', ', array_map(fn ($c) => Domain::CURRENCIES[$c]['symbol'] ?? $c, array_keys($accounts)));
+        }
+        $y = max($this->party($pdf, $l, $y, 260, 'Client', $client), $this->meta($pdf, $y + 4, $meta)) + 20;
+        if (!$accounts) {
+            $pdf->font('R', 10);
+            $pdf->text($l, $y, 'Pas encore de facture ni de paiement pour ce client.', self::MUTED);
+        }
+
+        $cols = [['Date', $l + 10, 'L'], ['Quoi', 102, 'L'], ['N°', 292, 'L'], ['À payer', 418, 'R'], ['Payé', 486, 'R'], ['Reste', $r - 10, 'R']];
+        foreach ($accounts as $cur => $a) {
+            if ($y > 560) {
+                $y = $this->continuation($pdf, $name);
+            }
+            if (count($accounts) > 1) {
+                $pdf->font('B', 10.5);
+                $pdf->text($l, $y, 'En ' . (Domain::CURRENCIES[$cur]['label'] ?? $cur), self::ACCENT);
+                $y += 20;
+            }
+            // Synthèse en quatre cases ; la dernière (solde) en pan orange
+            $period = $data['from'] !== null;
+            $boxes = [
+                [$period ? 'Facturé sur la période' : 'Total à payer', $a['invoiced'], self::INK],
+                [$period ? 'Payé sur la période' : 'Déjà payé', $a['settled'], self::INK],
+                ['Dont en retard', $a['overdue'], $a['overdue'] > 0 ? self::NEGATIVE : self::INK],
+                [$a['balance'] < 0 ? 'En votre faveur' : ($a['balance'] > 0 ? 'Reste à payer' : 'Tout est payé'), abs($a['balance']), self::NIGHT],
+            ];
+            $bw = ($r - $l - 3 * 8) / 4;
+            foreach ($boxes as $i => [$label, $amount, $color]) {
+                $bx = $l + $i * ($bw + 8);
+                if ($i === 3) {
+                    $pdf->polygon([[$bx + 10, $y], [$bx + $bw, $y], [$bx + $bw, $y + 50], [$bx, $y + 50]], $a['balance'] > 0 ? self::BAND : self::SETTLED);
+                } else {
+                    $pdf->rect($bx, $y, $bw, 50, self::ZEBRA);
+                    $pdf->rect($bx, $y, $bw, 3, self::NIGHT);
+                }
+                $pdf->font('R', 7.5);
+                $pdf->text($bx + 12, $y + 12, mb_strtoupper($label), $i === 3 ? self::NIGHT : self::MUTED);
+                $pdf->font('B', 12);
+                $pdf->text($bx + 12, $y + 27, Money::format((int) $amount, $cur), $color);
+            }
+            $y += 66;
+
+            // Mouvements avec solde progressif
+            $y = $this->tableHead($pdf, $y, $cols, 494);
+            $rows = $a['rows'];
+            if ($period) {
+                array_unshift($rows, ['date' => $data['from'], 'label' => 'Reste d’avant cette période', 'piece' => '', 'amount' => 0, 'balance' => $a['opening'], 'carry' => true]);
+            }
+            foreach ($rows as $n => $mv) {
+                $pdf->font('R', 8.5);
+                $lines = array_slice($pdf->wrap((string) $mv['label'], 182), 0, 2);
+                $rh = 12 + count($lines) * 11;
+                if ($y + $rh > 740) {
+                    $y = $this->tableHead($pdf, $this->continuation($pdf, $name), $cols, 494);
+                }
+                if ($n % 2 === 1) {
+                    $pdf->rect($l, $y, $r - $l, $rh, self::ZEBRA);
+                }
+                $ty = $y + 6.5;
+                $pdf->text($l + 10, $ty, d($mv['date']), self::INK);
+                $pdf->font(empty($mv['carry']) ? 'R' : 'B', 8.5);
+                foreach ($lines as $i => $line) {
+                    $pdf->text(102, $ty + $i * 11, $line, self::INK);
+                }
+                $pdf->font('R', 8);
+                $pdf->text(292, $ty + 0.5, (string) $mv['piece'], self::MUTED);
+                $pdf->font('R', 8.5);
+                if ($mv['amount'] > 0) {
+                    $pdf->textRight(418, $ty, Money::format($mv['amount'], $cur, false), self::INK);
+                } elseif ($mv['amount'] < 0) {
+                    $pdf->textRight(486, $ty, Money::format(-$mv['amount'], $cur, false), self::POSITIVE);
+                }
+                $pdf->font('B', 8.5);
+                $pdf->textRight($r - 10, $ty, Money::format((int) $mv['balance'], $cur, false), self::INK);
+                $y += $rh;
+            }
+            $pdf->line($l, $y, $r, $y, self::NIGHT, 1.2);
+            $y = $this->totalBlock($pdf, 300, $y + 12, $r, 'Reste au ' . d($data['to']), Money::format($a['balance'], $cur), $a['balance'] > 0 ? self::BAND : self::SETTLED) + 22;
+
+            // Factures restant à régler
+            if ($a['open']) {
+                if ($y + 40 > 740) {
+                    $y = $this->continuation($pdf, $name);
+                }
+                $y = $this->tag($pdf, $l, $y, 'Factures pas encore payées');
+                foreach ($a['open'] as $o) {
+                    if ($y > 750) {
+                        $y = $this->continuation($pdf, $name);
+                    }
+                    $pdf->font('B', 8.5);
+                    $pdf->text($l, $y, (string) $o['number'], self::INK);
+                    $pdf->font('R', 8.5);
+                    $pdf->text($l + 110, $y, 'émise le ' . d($o['issue_date']), self::MUTED);
+                    $pdf->text($l + 210, $y, $o['due_date'] ? 'échéance ' . d($o['due_date']) . ($o['late'] ? ' (échue)' : '') : 'sans échéance', $o['late'] ? self::NEGATIVE : self::MUTED);
+                    $pdf->font('B', 8.5);
+                    $pdf->textRight($r - 10, $y, Money::format($o['due'], $cur), $o['late'] ? self::NEGATIVE : self::INK);
+                    $pdf->line($l, $y + 14, $r, $y + 14, self::RULE, 0.5);
+                    $y += 20;
+                }
+                $y += 14;
+            }
+        }
+        $this->footer($pdf, '« À payer » : vos factures. « Payé » : vos paiements. « Reste » : ce qu’il reste à payer après chaque ligne (négatif = en votre faveur). ' . Settings::get('COMPANY_PAYMENT_INFO', ''));
         return $pdf->output();
     }
 

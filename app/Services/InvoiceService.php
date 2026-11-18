@@ -135,7 +135,7 @@ final class InvoiceService
         }
         $terms = $opts['payment_terms'] ?? null ?: ($client['default_payment_terms'] ?: null);
         if ($terms !== null && !isset(Domain::PAYMENT_TERMS[$terms])) {
-            throw new ValidationException(['payment_terms' => 'Modalité de paiement inconnue.']);
+            throw new ValidationException(['payment_terms' => 'Façon de payer inconnue.']);
         }
         $taxBp = (int) ($opts['tax_rate_bp'] ?? Config::int('DEFAULT_TAX_RATE_BP', 0));
         if ($taxBp < 0 || $taxBp > 5000) {
@@ -143,7 +143,7 @@ final class InvoiceService
         }
         $due = ($opts['due_date'] ?? '') ?: null;
         if ($due !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $due)) {
-            throw new ValidationException(['due_date' => 'Date d’échéance invalide.']);
+            throw new ValidationException(['due_date' => 'Date « à payer avant le » invalide.']);
         }
 
         return $this->db->tx(function () use ($clientId, $parcelIds, $opts, $terms, $taxBp, $due) {
@@ -164,7 +164,7 @@ final class InvoiceService
                 }
                 $currency ??= $p['currency'];
                 if ($p['currency'] !== $currency) {
-                    throw new BusinessException('Tous les colis d’une même facture doivent être dans la même devise.');
+                    throw new BusinessException('Tous les colis d’une facture doivent être dans la même monnaie.');
                 }
                 $shipmentIds[$p['shipment_id'] ?? 0] = true;
                 $rows[] = $p;
@@ -180,7 +180,7 @@ final class InvoiceService
                 $fee = $opts['fees'][$p['id']] ?? null;
                 $feeMinor = $fee ? (Money::parse((string) ($fee['amount'] ?? ''), $currency) ?? 0) : 0;
                 if ($feeMinor < 0) {
-                    throw new BusinessException('Les frais supplémentaires ne peuvent pas être négatifs.');
+                    throw new BusinessException('Les frais en plus ne peuvent pas être négatifs.');
                 }
                 $transport = Money::transportAmount((int) $p['billable_weight_g'], (int) $p['rate_per_kg_minor']);
                 try {
@@ -223,7 +223,7 @@ final class InvoiceService
     {
         $inv = $this->get($id);
         if ($inv['status'] !== 'draft') {
-            throw new BusinessException('Seul un brouillon peut être modifié. Une facture validée se corrige par annulation ou avoir.');
+            throw new BusinessException('Cette facture est terminée : elle ne se modifie plus. Annulez-la ou faites une facture d’annulation.');
         }
         return $inv;
     }
@@ -233,15 +233,15 @@ final class InvoiceService
         $inv = $this->requireDraft($id);
         $terms = ($in['payment_terms'] ?? '') ?: null;
         if ($terms !== null && !isset(Domain::PAYMENT_TERMS[$terms])) {
-            throw new ValidationException(['payment_terms' => 'Modalité de paiement inconnue.']);
+            throw new ValidationException(['payment_terms' => 'Façon de payer inconnue.']);
         }
         $due = ($in['due_date'] ?? '') ?: null;
         if ($due !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $due)) {
-            throw new ValidationException(['due_date' => 'Date d’échéance invalide.']);
+            throw new ValidationException(['due_date' => 'Date « à payer avant le » invalide.']);
         }
         $taxBp = self::parseRateBp((string) ($in['tax_rate'] ?? '0'));
         if ($taxBp === null) {
-            throw new ValidationException(['tax_rate' => 'Taux de taxe invalide (ex. 18 ou 18,5).']);
+            throw new ValidationException(['tax_rate' => 'Taxe invalide (ex. : 18 ou 18,5).']);
         }
         $this->db->tx(function () use ($id, $in, $terms, $due, $taxBp, $inv) {
             $this->db->update('invoices', [
@@ -256,7 +256,7 @@ final class InvoiceService
                 }
                 $amount = Money::parse((string) ($fee['amount'] ?? ''), $inv['currency']) ?? 0;
                 if ($amount < 0) {
-                    throw new ValidationException(['fees' => 'Les frais supplémentaires ne peuvent pas être négatifs.']);
+                    throw new ValidationException(['fees' => 'Les frais en plus ne peuvent pas être négatifs.']);
                 }
                 $this->db->update('invoice_items', [
                     'fees_minor' => $amount,
@@ -274,7 +274,7 @@ final class InvoiceService
                     }
                     $amt = Money::parse((string) $row['amount'], $inv['currency']);
                     if ($amt === null || $amt <= 0 || !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $row['due_date'])) {
-                        throw new ValidationException(['installments' => 'Échéancier : chaque ligne doit avoir une date et un montant positif.']);
+                        throw new ValidationException(['installments' => 'Paiement en plusieurs fois : chaque ligne doit avoir une date et un montant.']);
                     }
                     $this->db->insert('invoice_installments', [
                         'invoice_id' => $id, 'due_date' => $row['due_date'], 'amount_minor' => $amt,
@@ -329,11 +329,11 @@ final class InvoiceService
         $this->db->tx(function () use ($id) {
             $inv = $this->db->one('SELECT * FROM invoices WHERE id = ?' . $this->db->forUpdate(), [$id]);
             if (!$inv || $inv['status'] !== 'draft') {
-                throw new BusinessException('Cette facture n’est pas un brouillon.');
+                throw new BusinessException('Cette facture est déjà terminée.');
             }
             $count = (int) $this->db->value('SELECT COUNT(*) FROM invoice_items WHERE invoice_id = ?', [$id]);
             if ($count === 0) {
-                throw new BusinessException('Une facture sans ligne ne peut pas être validée.');
+                throw new BusinessException('Ajoutez au moins un colis avant de terminer la facture.');
             }
             $this->recalc($id);
             $inv = $this->db->one('SELECT * FROM invoices WHERE id = ?', [$id]);
@@ -363,7 +363,7 @@ final class InvoiceService
         $inv = $this->get($id);
         (new NotificationService($this->db))->toClient(
             (int) $inv['client_id'], 'invoice.issued', 'Facture ' . $inv['number'],
-            sprintf('%s : facture %s de %s émise, échéance le %s.', Config::get('APP_NAME', 'Diarrassouba'), $inv['number'], Money::format((int) $inv['total_minor'], $inv['currency']), d($inv['due_date'])),
+            sprintf('%s : votre facture %s de %s, à payer avant le %s.', Config::get('APP_NAME', 'Diarrassouba'), $inv['number'], Money::format((int) $inv['total_minor'], $inv['currency']), d($inv['due_date'])),
             'invoice', $id
         );
     }
@@ -373,15 +373,15 @@ final class InvoiceService
     {
         $reason = trim($reason);
         if (mb_strlen($reason) < 5) {
-            throw new ValidationException(['reason' => 'Indiquez le motif de l’annulation (5 caractères minimum).']);
+            throw new ValidationException(['reason' => 'Expliquez en quelques mots pourquoi vous annulez.']);
         }
         $this->db->tx(function () use ($id, $reason) {
             $inv = $this->db->one('SELECT * FROM invoices WHERE id = ?' . $this->db->forUpdate(), [$id]);
             if (!$inv || !in_array($inv['status'], ['validated'], true) || $inv['kind'] !== 'invoice') {
-                throw new BusinessException('Seule une facture validée et sans paiement peut être annulée.');
+                throw new BusinessException('Seule une facture terminée et pas encore payée peut être annulée.');
             }
             if ((int) $inv['paid_minor'] !== 0) {
-                throw new BusinessException('Cette facture a reçu des paiements : annulez-les d’abord ou émettez un avoir.');
+                throw new BusinessException('Le client a déjà payé une partie : annulez d’abord ces paiements, ou faites une facture d’annulation.');
             }
             $this->db->update('invoices', [
                 'status' => 'cancelled', 'cancelled_at' => Db::now(), 'cancelled_by' => Auth::id(),
@@ -402,12 +402,12 @@ final class InvoiceService
     {
         $reason = trim($reason);
         if (mb_strlen($reason) < 5) {
-            throw new ValidationException(['reason' => 'Indiquez le motif de l’avoir (5 caractères minimum).']);
+            throw new ValidationException(['reason' => 'Expliquez en quelques mots pourquoi vous annulez.']);
         }
         return $this->db->tx(function () use ($id, $reason) {
             $inv = $this->db->one('SELECT * FROM invoices WHERE id = ?' . $this->db->forUpdate(), [$id]);
             if (!$inv || $inv['kind'] !== 'invoice' || !in_array($inv['status'], ['validated', 'partial', 'paid'], true)) {
-                throw new BusinessException('Un avoir ne peut être émis que sur une facture validée.');
+                throw new BusinessException('On ne peut faire une facture d’annulation que pour une facture terminée.');
             }
             $creditId = $this->db->insert('invoices', [
                 'number' => Sequence::yearly('AVO'), 'kind' => 'credit_note', 'client_id' => $inv['client_id'],
@@ -436,6 +436,96 @@ final class InvoiceService
             Audit::log('invoice.credit_note', 'invoice', $id, ['credit_note_id' => $creditId]);
             return $creditId;
         });
+    }
+
+    /**
+     * Relevé de compte d'un client, par devise : factures (débit), avoirs et paiements (crédit),
+     * annulations de paiement (débit), avec solde progressif. Brouillons et factures annulées exclus.
+     * Dates locales Y-m-d ; sans $from, le relevé part du premier mouvement.
+     */
+    public function statement(int $clientId, ?string $from = null, ?string $to = null): array
+    {
+        $today = (new \DateTimeImmutable('now', local_tz()))->format('Y-m-d');
+        $to ??= $today;
+        $moves = [];
+        $open = [];
+        $invoices = $this->db->all(
+            "SELECT i.*, o.number AS credit_of_number FROM invoices i LEFT JOIN invoices o ON o.id = i.credit_of_invoice_id
+             WHERE i.client_id = ? AND i.status NOT IN ('draft','cancelled') ORDER BY i.issue_date, i.id",
+            [$clientId]
+        );
+        foreach ($invoices as $i) {
+            $credit = $i['kind'] === 'credit_note';
+            $moves[] = [
+                'date' => $i['issue_date'], 'order' => $credit ? 1 : 0, 'currency' => $i['currency'], 'piece' => $i['number'],
+                'label' => $credit ? 'Annulation' . ($i['credit_of_number'] ? ' de la facture ' . $i['credit_of_number'] : '') : 'Facture' . ($i['due_date'] ? ', à payer avant le ' . d($i['due_date']) : ''),
+                'amount' => (int) $i['total_minor'],
+            ];
+            if (!$credit && in_array($i['status'], ['validated', 'partial'], true)) {
+                $open[] = [
+                    'number' => $i['number'], 'currency' => $i['currency'], 'issue_date' => $i['issue_date'], 'due_date' => $i['due_date'],
+                    'due' => (int) $i['total_minor'] - (int) $i['paid_minor'], 'late' => $i['due_date'] && $i['due_date'] < $today,
+                ];
+            }
+        }
+        $payments = $this->db->all(
+            "SELECT pay.amount_minor, pay.currency, pay.method, pay.reference, pay.paid_at, pay.receipt_number, i.number AS invoice_number
+             FROM payments pay JOIN invoices i ON i.id = pay.invoice_id
+             WHERE i.client_id = ? AND i.status NOT IN ('draft','cancelled') ORDER BY pay.paid_at, pay.id",
+            [$clientId]
+        );
+        foreach ($payments as $p) {
+            $reversal = (int) $p['amount_minor'] < 0;
+            $moves[] = [
+                'date' => dt($p['paid_at'], 'Y-m-d'), 'order' => 2, 'currency' => $p['currency'], 'piece' => $p['receipt_number'],
+                'label' => ($reversal ? 'Annulation de paiement' : 'Paiement ' . (Domain::PAYMENT_METHODS[$p['method']] ?? $p['method']) . ($p['reference'] ? ' ' . $p['reference'] : ''))
+                    . ', facture ' . $p['invoice_number'],
+                'amount' => -(int) $p['amount_minor'],
+            ];
+        }
+        usort($moves, fn ($a, $b) => [$a['date'], $a['order']] <=> [$b['date'], $b['order']]);
+
+        $accounts = [];
+        foreach ($moves as $m) {
+            $a = &$accounts[$m['currency']];
+            $a ??= ['opening' => 0, 'rows' => [], 'invoiced' => 0, 'settled' => 0, 'balance' => 0, 'overdue' => 0, 'open' => []];
+            if ($m['date'] > $to) {
+                continue;
+            }
+            $a['balance'] += $m['amount'];
+            if ($from !== null && $m['date'] < $from) {
+                $a['opening'] += $m['amount'];
+                continue;
+            }
+            $m['balance'] = $a['balance'];
+            $a['rows'][] = $m;
+            $m['order'] === 0 ? $a['invoiced'] += $m['amount'] : $a['settled'] -= $m['amount'];   // réglé : paiements nets et avoirs
+        }
+        unset($a);
+        foreach ($open as $o) {
+            if (isset($accounts[$o['currency']])) {
+                $accounts[$o['currency']]['open'][] = $o;
+                $accounts[$o['currency']]['overdue'] += $o['late'] ? $o['due'] : 0;
+            }
+        }
+        return ['accounts' => $accounts, 'from' => $from, 'to' => $to, 'today' => $today];
+    }
+
+    /** Message d'accompagnement du relevé partagé (WhatsApp, SMS, e-mail). */
+    public function statementMessage(array $client, array $st, string $url, int $hours): string
+    {
+        $lines = ['Bonjour ' . $client['name'] . ',', '', 'Voici le point sur vos paiements (compte ' . $client['code'] . ') — ' . Config::get('APP_NAME', 'DIARRASSOUBA IMPORT-EXPORT') . '.'];
+        foreach ($st['accounts'] as $cur => $a) {
+            $lines[] = '';
+            $lines[] = 'Total à payer : ' . Money::format($a['invoiced'], $cur);
+            $lines[] = 'Déjà payé : ' . Money::format($a['settled'], $cur);
+            $lines[] = $a['balance'] > 0 ? 'Reste à payer : ' . Money::format($a['balance'], $cur)
+                : ($a['balance'] < 0 ? 'En votre faveur : ' . Money::format(-$a['balance'], $cur) : 'Votre compte est soldé. Merci !');
+        }
+        $lines[] = '';
+        $lines[] = 'Voir le détail : ' . $url;
+        $lines[] = '(lien valable ' . $hours . ' h)';
+        return implode("\n", $lines);
     }
 
     /** Recalcule le montant payé et le statut à partir des paiements (appelé dans une transaction). */

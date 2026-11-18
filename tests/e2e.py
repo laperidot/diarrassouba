@@ -64,7 +64,7 @@ with sync_playwright() as p:
     pg.click('form[data-parcel-form] button.btn-primary'); pg.wait_for_load_state('networkidle')
     code = pg.inner_text('h1').strip()
     check('Colis enregistré, code de suivi affiché', re.match(r'^DI-[0-9A-Z]{4}-[0-9A-Z]{4}$', code), code)
-    parcel_url = pg.url
+    parcel_url = pg.url.split('?')[0]
     r = pg.request.get(parcel_url + '/etiquette')
     check('Étiquette PDF générée', r.status == 200 and r.headers['content-type'] == 'application/pdf' and r.body()[:5] == b'%PDF-')
 
@@ -85,7 +85,7 @@ with sync_playwright() as p:
     check('Colis ajouté au dossier', code in pg.inner_text('table'))
     pg.select_option('#ship-status', 'departed')
     pg.click('form[action$="/statut"] button'); pg.wait_for_load_state('networkidle')
-    check('Départ confirmé : colis passé « Expédié »', 'expédié' in pg.inner_text('table').lower())  # statuts affichés en capitales
+    check('Départ confirmé : colis passé « Parti »', 'parti' in pg.inner_text('table').lower())  # statuts affichés en capitales
     ctx.close()
 
     ctx = b.new_context(viewport={'width': 1280, 'height': 900}); pg = ctx.new_page()
@@ -97,17 +97,17 @@ with sync_playwright() as p:
     pg.wait_for_selector('[data-picker] .picker-results button'); pg.click('[data-picker] .picker-results button')
     pg.wait_for_load_state('networkidle')
     pg.check(f'label:has-text("{code}") input')
-    pg.click('form button.btn-primary:has-text("Créer le brouillon")'); pg.wait_for_load_state('networkidle')
-    check('Brouillon de facture créé', 'brouillon' in pg.inner_text('h1').lower())
+    pg.click('form button.btn-primary:has-text("Continuer")'); pg.wait_for_load_state('networkidle')
+    check('Facture préparée (pas encore terminée)', 'pas encore terminée' in pg.inner_text('h1').lower())
     inv_url = pg.url
-    pg.click('button:has-text("Valider et numéroter")'); pg.wait_for_load_state('networkidle')
+    pg.click('button:has-text("Terminer la facture")'); pg.wait_for_load_state('networkidle')
     number = pg.inner_text('h1')
     check('Facture validée et numérotée', re.search(r'FAC-\d{4}-\d{5}', number), number)
     pg.goto(BASE + '/factures/nouvelle?client=' + inv_url.rsplit('/', 1)[1])  # n'importe quel client
     pg.goto(inv_url)
     pg.fill('#amount', '10000'); pg.select_option('#method', 'wave'); pg.fill('#reference', 'WAVE-E2E-1')
     pg.click('button:has-text("Enregistrer le paiement")'); pg.wait_for_load_state('networkidle')
-    check('Paiement partiel enregistré', 'Partiellement payée' in pg.content())
+    check('Paiement partiel enregistré', 'Payée en partie' in pg.content())
     receipt = pg.locator('a:has-text("ouvrir le PDF")').get_attribute('href')
     r = pg.request.get(urllib.parse.urljoin(BASE + '/', receipt))  # lien déjà préfixé si sous-dossier
     check('Reçu PDF téléchargeable', r.status == 200 and r.body()[:5] == b'%PDF-')
@@ -130,7 +130,7 @@ with sync_playwright() as p:
     print('\nSuivi public')
     r = ap.goto(BASE + '/suivi/' + code)
     html = ap.content()
-    check('Suivi : colis trouvé avec historique', r.status == 200 and 'Historique' in html and 'Expédié' in html)
+    check('Suivi : colis trouvé avec historique', r.status == 200 and 'Historique' in html and 'Parti' in html)
     check('Suivi : aucun montant affiché', 'CFA' not in html)
     check('Suivi : téléphone et nom complet masqués', '0101' not in html and 'Konan Aya Marie' not in html)
     check('Suivi : pas de nom d’agent', 'Ibrahim' not in html and 'Yao Kouassi' not in html)

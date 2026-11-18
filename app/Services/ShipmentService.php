@@ -35,7 +35,7 @@ final class ShipmentService
 
     public function get(int $id): array
     {
-        return $this->find($id) ?? throw new BusinessException('Dossier introuvable.');
+        return $this->find($id) ?? throw new BusinessException('Vol introuvable.');
     }
 
     public function list(array $f = [], int $limit = 30, int $offset = 0): array
@@ -146,7 +146,7 @@ final class ShipmentService
     {
         $s = $this->get($id);
         if (in_array($s['status'], ['closed', 'cancelled'], true)) {
-            throw new BusinessException('Dossier clôturé ou annulé : modification impossible.');
+            throw new BusinessException('Ce vol est terminé ou annulé : on ne peut plus le modifier.');
         }
         $data = $this->input($in) + ['updated_at' => Db::now()];
         $this->db->update('shipments', $data, 'id = ?', [$id]);
@@ -162,7 +162,7 @@ final class ShipmentService
     {
         $s = $this->get($shipmentId);
         if ($s['status'] !== 'preparation') {
-            throw new BusinessException('Les colis ne peuvent être ajoutés qu’à un dossier en préparation.');
+            throw new BusinessException('On ne peut ajouter des colis que dans un vol « En préparation ».');
         }
         $added = 0;
         $skipped = [];
@@ -173,15 +173,15 @@ final class ShipmentService
                     continue;
                 }
                 if ($p['shipment_id']) {
-                    $skipped[$p['tracking_code']] = (int) $p['shipment_id'] === $shipmentId ? 'déjà dans ce dossier' : 'déjà associé à un autre dossier actif';
+                    $skipped[$p['tracking_code']] = (int) $p['shipment_id'] === $shipmentId ? 'déjà dans ce vol' : 'déjà dans un autre vol';
                     continue;
                 }
                 if (!in_array($p['status'], ['registered', 'awaiting', 'check_required'], true)) {
-                    $skipped[$p['tracking_code']] = 'statut « ' . Domain::parcelLabel($p['status']) . ' » incompatible';
+                    $skipped[$p['tracking_code']] = 'il est « ' . Domain::parcelLabel($p['status']) . ' »';
                     continue;
                 }
                 if ($p['destination_country'] !== $s['destination_country']) {
-                    $skipped[$p['tracking_code']] = 'destination différente du dossier';
+                    $skipped[$p['tracking_code']] = 'il ne va pas au même endroit que ce vol';
                     continue;
                 }
                 try {
@@ -191,7 +191,7 @@ final class ShipmentService
                     ]);
                 } catch (\PDOException $e) {
                     if (Db::isUniqueViolation($e)) {
-                        $skipped[$p['tracking_code']] = 'déjà associé à un dossier actif';
+                        $skipped[$p['tracking_code']] = 'déjà dans un autre vol';
                         continue;
                     }
                     throw $e;
@@ -199,7 +199,7 @@ final class ShipmentService
                 $this->db->update('parcels', ['shipment_id' => $shipmentId, 'updated_at' => Db::now()], 'id = ?', [$p['id']]);
                 if ($p['status'] === 'registered') {
                     (new ParcelService($this->db))->changeStatus((int) $p['id'], 'awaiting', [
-                        'public_comment' => 'Colis affecté à un prochain vol.', 'silent' => true, 'via' => 'shipment',
+                        'public_comment' => 'Colis prévu sur un prochain vol.', 'silent' => true, 'via' => 'shipment',
                     ]);
                 }
                 $added++;
@@ -213,7 +213,7 @@ final class ShipmentService
     {
         $s = $this->get($shipmentId);
         if ($s['status'] !== 'preparation') {
-            throw new BusinessException('Un colis ne peut être retiré que d’un dossier en préparation.');
+            throw new BusinessException('On ne peut retirer un colis que d’un vol « En préparation ».');
         }
         $this->db->tx(function () use ($shipmentId, $parcelId) {
             $n = $this->db->run(
@@ -221,7 +221,7 @@ final class ShipmentService
                 [Db::now(), Auth::id(), $shipmentId, $parcelId]
             )->rowCount();
             if ($n === 0) {
-                throw new BusinessException('Ce colis n’est pas dans ce dossier.');
+                throw new BusinessException('Ce colis n’est pas dans ce vol.');
             }
             $this->db->update('parcels', ['shipment_id' => null, 'updated_at' => Db::now()], 'id = ?', [$parcelId]);
             Audit::log('shipment.parcel_removed', 'shipment', $shipmentId, ['parcel_id' => $parcelId]);
@@ -239,7 +239,7 @@ final class ShipmentService
         $s = $this->get($id);
         $from = $s['status'];
         if (!in_array($to, Domain::SHIPMENT_TRANSITIONS[$from] ?? [], true)) {
-            throw new BusinessException(sprintf('Passage du dossier de « %s » à « %s » non autorisé.', Domain::SHIPMENT_STATUSES[$from] ?? $from, Domain::SHIPMENT_STATUSES[$to] ?? $to));
+            throw new BusinessException(sprintf('Le vol ne peut pas passer de « %s » à « %s ».', Domain::SHIPMENT_STATUSES[$from] ?? $from, Domain::SHIPMENT_STATUSES[$to] ?? $to));
         }
         if ($to === 'departed' && (int) $s['parcel_count'] === 0) {
             throw new BusinessException('Ajoutez au moins un colis avant de confirmer le départ.');
@@ -247,11 +247,11 @@ final class ShipmentService
         if ($to === 'closed') {
             $open = (int) $this->db->value("SELECT COUNT(*) FROM parcels WHERE shipment_id = ? AND status NOT IN ('delivered')", [$id]);
             if ($open > 0 && empty($opts['force_close'])) {
-                throw new BusinessException("$open colis de ce dossier ne sont pas encore remis. Cochez « Clôturer malgré tout » pour confirmer.");
+                throw new BusinessException("$open colis de ce vol ne sont pas encore remis aux clients. Cochez « Terminer quand même » si vous êtes sûr.");
             }
         }
         if ($to === 'cancelled' && (int) $s['parcel_count'] > 0) {
-            throw new BusinessException('Retirez d’abord les colis du dossier avant de l’annuler.');
+            throw new BusinessException('Retirez d’abord les colis de ce vol avant de l’annuler.');
         }
 
         $updated = 0;
@@ -293,7 +293,7 @@ final class ShipmentService
                 }
                 $flow = array_keys(Domain::PARCEL_FLOW);
                 if (array_search($p['status'], $flow, true) >= array_search($target, $flow, true)) {
-                    $skipped[$p['tracking_code']] = 'déjà au statut « ' . Domain::parcelLabel($p['status']) . ' »';
+                    $skipped[$p['tracking_code']] = 'il est déjà « ' . Domain::parcelLabel($p['status']) . ' »';
                     continue;
                 }
                 try {
@@ -322,6 +322,17 @@ final class ShipmentService
 
     /** Colis pouvant être ajoutés (même destination, pas encore affectés). */
     /** Dossiers en préparation vers ce pays : vols dans lesquels un colis peut encore être chargé. */
+    /** Vol en préparation qui part le plus tôt (raccourci « Charger le vol »). */
+    public function nextToLoad(): ?array
+    {
+        return $this->db->one(
+            "SELECT s.id, s.reference, s.destination_city, s.planned_departure,
+                    (SELECT COUNT(*) FROM parcels p WHERE p.shipment_id = s.id) AS parcel_count
+             FROM shipments s WHERE s.status = 'preparation'
+             ORDER BY CASE WHEN s.planned_departure IS NULL THEN 1 ELSE 0 END, s.planned_departure, s.id LIMIT 1"
+        );
+    }
+
     public function openFor(string $destinationCountry): array
     {
         return $this->db->all(

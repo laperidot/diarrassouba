@@ -46,14 +46,14 @@ final class AdminController extends Controller
     public function tariffs(): string
     {
         Auth::require('tariffs.manage');
-        return $this->view('users/tariffs', ['title' => 'Tarifs au kilogramme', 'tariffs' => (new UserService())->tariffs()]);
+        return $this->view('users/tariffs', ['title' => 'Prix au kilo', 'tariffs' => (new UserService())->tariffs()]);
     }
 
     public function tariffStore(): never
     {
         Auth::require('tariffs.manage');
         $this->attempt(fn () => (new UserService())->saveTariff(null, Request::all()), 'tarifs');
-        Session::flash('success', 'Tarif ajouté.');
+        Session::flash('success', 'Prix ajouté.');
         $this->redirect('tarifs');
     }
 
@@ -61,7 +61,7 @@ final class AdminController extends Controller
     {
         Auth::require('tariffs.manage');
         $this->attempt(fn () => (new UserService())->saveTariff((int) $id, Request::all()), 'tarifs');
-        Session::flash('success', 'Tarif mis à jour. Les colis déjà enregistrés conservent leur tarif.');
+        Session::flash('success', 'Prix mis à jour. Les colis déjà enregistrés gardent leur ancien prix.');
         $this->redirect('tarifs');
     }
 
@@ -80,7 +80,7 @@ final class AdminController extends Controller
     {
         Auth::require('settings.manage');
         $changed = $this->attempt(fn () => \App\Core\Settings::save($_POST, Auth::id()), 'parametres');
-        Session::flash('success', $changed ? 'Paramètres enregistrés : la page de suivi et les nouveaux documents les utilisent immédiatement.' : 'Aucune modification.');
+        Session::flash('success', $changed ? 'Paramètres enregistrés : ils s’appliquent tout de suite.' : 'Aucune modification.');
         $this->redirect('parametres');
     }
 
@@ -88,6 +88,6 @@ final class AdminController extends Controller
     {
         Auth::require('audit.view');
         $f = ['entity_type' => Request::query('type'), 'entity_id' => Request::query('id'), 'action' => Request::query('action')];
-        return $this->view('users/audit', ['title' => 'Journal des opérations', 'logs' => (new UserService())->audit($f, 200), 'f' => $f]);
+        return $this->view('users/audit', ['title' => 'Historique des actions', 'logs' => (new UserService())->audit($f, 200), 'f' => $f]);
     }
 }

@@ -79,7 +79,7 @@ with sync_playwright() as p:
     check('Étape suivante présélectionnée : « Confirmer le départ »', item.locator('select').evaluate('s => s.options[s.selectedIndex].text') == 'Confirmer le départ')
     item.locator('button:has-text("Valider")').click(); pg.wait_for_load_state('networkidle')
     check('Départ confirmé depuis le tableau de bord, on y reste', pg.url.rstrip('/').endswith('/tableau-de-bord') and f'{ship_ref} : parti' in pg.inner_text('main'), pg.url)
-    check('Colis du vol passés « Expédié »', 'expédié' in (pg.goto(B + '/colis?q=' + code) and pg.inner_text('table').lower()))
+    check('Colis du vol passés « Parti »', 'parti' in (pg.goto(B + '/colis?q=' + code) and pg.inner_text('table').lower()))
     pg.goto(B + '/tableau-de-bord')
     item = pg.locator(f'.flights > li:has-text("{sn_ref}")')
     item.locator('button:has-text("Valider")').click(); pg.wait_for_load_state('networkidle')

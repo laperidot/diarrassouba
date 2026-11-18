@@ -13,7 +13,7 @@ $today = class_exists('IntlDateFormatter')
 <div class="board-head">
   <div style="margin-right:auto">
     <p class="eyebrow"><?= e(ucfirst((string) $today)) ?></p>
-    <h1>Tableau de bord</h1>
+    <h1>Accueil</h1>
   </div>
   <nav class="chips" aria-label="Période">
     <?php foreach (DashboardService::PERIODS as $k => $l): ?>
@@ -32,14 +32,14 @@ $today = class_exists('IntlDateFormatter')
 </div>
 
 <nav class="quick" aria-label="Actions rapides">
-  <?php if (can('parcels.create')): ?><a class="quick-go" href="<?= e(url('colis/nouveau')) ?>"><?= icon('plus') ?><span><strong>Enregistrer un colis</strong><small>Pesée et étiquette</small></span></a><?php endif ?>
-  <?php if (can('parcels.view')): ?><a href="<?= e(url('scanner')) ?>"><?= icon('scan') ?><span><strong>Scanner</strong><small>Code-barres</small></span></a><?php endif ?>
+  <?php if (can('parcels.create')): ?><a class="quick-go" href="<?= e(url('colis/nouveau')) ?>"><?= icon('plus') ?><span><strong>Enregistrer un colis</strong><small>Peser, imprimer l’étiquette</small></span></a><?php endif ?>
+  <?php if (can('parcels.view')): ?><a href="<?= e(url('scanner')) ?>"><?= icon('scan') ?><span><strong>Scanner</strong><small>Lire une étiquette</small></span></a><?php endif ?>
   <?php if (can('shipments.load')): ?>
-    <?php if ($loading): ?><a href="<?= e(url('dossiers/' . $loading['id']) . '#charger') ?>"><?= icon('plane') ?><span><strong>Charger le vol</strong><small><?= e($loading['reference']) ?> · <?= pluralize((int) $loading['parcel_count'], 'colis', 'colis') ?></small></span></a>
-    <?php elseif (can('shipments.edit')): ?><a href="<?= e(url('dossiers/nouveau')) ?>"><?= icon('plane') ?><span><strong>Préparer un vol</strong><small>Nouveau dossier</small></span></a><?php endif ?>
+    <?php if ($loading): ?><a href="<?= e(url('dossiers/' . $loading['id']) . '#charger') ?>"><?= icon('plane') ?><span><strong>Charger le vol</strong><small><?= e($loading['destination_city'] ?: $loading['reference']) ?> · <?= pluralize((int) $loading['parcel_count'], 'colis', 'colis') ?></small></span></a>
+    <?php elseif (can('shipments.edit')): ?><a href="<?= e(url('dossiers/nouveau')) ?>"><?= icon('plane') ?><span><strong>Créer un vol</strong><small>Pour y mettre des colis</small></span></a><?php endif ?>
   <?php endif ?>
-  <?php if (can('payments.record')): ?><a href="<?= e(url('factures', ['status' => 'open'])) ?>"><?= icon('cash') ?><span><strong>Encaisser</strong><small>Factures à régler</small></span></a><?php endif ?>
-  <?php if (can('deliveries.manage')): ?><a href="<?= e(url('livraisons')) ?>"><?= icon('truck') ?><span><strong>Remettre</strong><small>Retraits, livraisons</small></span></a><?php endif ?>
+  <?php if (can('payments.record')): ?><a href="<?= e(url('factures', ['status' => 'open'])) ?>"><?= icon('cash') ?><span><strong>Encaisser</strong><small>Recevoir un paiement</small></span></a><?php endif ?>
+  <?php if (can('deliveries.manage')): ?><a href="<?= e(url('livraisons')) ?>"><?= icon('truck') ?><span><strong>Remettre</strong><small>Donner un colis au client</small></span></a><?php endif ?>
 </nav>
 
 <section class="panel flow-board" aria-labelledby="flow-title">
@@ -59,29 +59,29 @@ $today = class_exists('IntlDateFormatter')
   <div class="flow-foot">
     <span><strong><?= $inProgress ?></strong> colis en cours</span>
     <?php if ($exceptions): ?>
-      <a class="exception-link" href="<?= e(url('colis', ['statut' => 'exceptions'])) ?>"><?= pluralize($exceptions, 'incident à traiter', 'incidents à traiter') ?></a>
+      <a class="exception-link" href="<?= e(url('colis', ['statut' => 'exceptions'])) ?>"><?= pluralize($exceptions, 'problème à régler', 'problèmes à régler') ?></a>
     <?php else: ?>
-      <span class="muted">Aucun incident ouvert</span>
+      <span class="muted">Aucun problème</span>
     <?php endif ?>
-    <span class="muted">Tronçon en pointillés : en vol</span>
+    <span class="muted">Pointillés : colis dans l’avion</span>
   </div>
 </section>
 
 <h2 class="sr-only">Activité sur la période</h2>
 <div class="figures" style="margin-top:16px">
   <div class="figure"><div class="label">Colis enregistrés</div><div class="value"><?= $ops['parcels'] ?></div><div class="hint"><?= e($periodLabel) ?></div></div>
-  <div class="figure"><div class="label">Poids enregistré</div><div class="value"><?= e(kg($ops['registered_weight_g'])) ?></div><div class="hint">au comptoir</div></div>
-  <div class="figure"><div class="label">Vols partis</div><div class="value"><?= $ops['flights'] ?></div><div class="hint"><?= pluralize($ops['shipments'], 'dossier ouvert', 'dossiers ouverts') ?></div></div>
-  <div class="figure"><div class="label">Poids transporté</div><div class="value"><?= e(kg($ops['flown_weight_g'])) ?></div><div class="hint">sur les vols partis</div></div>
+  <div class="figure"><div class="label">Poids reçu</div><div class="value"><?= e(kg($ops['registered_weight_g'])) ?></div><div class="hint">au comptoir</div></div>
+  <div class="figure"><div class="label">Vols partis</div><div class="value"><?= $ops['flights'] ?></div><div class="hint"><?= pluralize($ops['shipments'], 'vol en cours', 'vols en cours') ?></div></div>
+  <div class="figure"><div class="label">Poids envoyé</div><div class="value"><?= e(kg($ops['flown_weight_g'])) ?></div><div class="hint">dans les vols partis</div></div>
 </div>
 
 <div class="grid grid-main" style="margin-top:16px">
   <div class="stack">
     <?php if (can('shipments.view')): ?>
     <section class="panel" aria-labelledby="flights-title">
-      <div class="panel-head"><h2 id="flights-title">Vols en cours</h2><a href="<?= e(url('dossiers')) ?>">Tous les dossiers</a></div>
+      <div class="panel-head"><h2 id="flights-title">Vols en cours</h2><a href="<?= e(url('dossiers')) ?>">Tous les vols</a></div>
       <?php if (!$flights): ?>
-        <p class="muted" style="margin:0">Aucun vol en cours.<?php if (can('shipments.edit')): ?> <a href="<?= e(url('dossiers/nouveau')) ?>">Préparer un vol</a><?php endif ?></p>
+        <p class="muted" style="margin:0">Aucun vol en cours.<?php if (can('shipments.edit')): ?> <a href="<?= e(url('dossiers/nouveau')) ?>">Créer un vol</a><?php endif ?></p>
       <?php else: ?>
         <ul class="flights">
           <?php foreach ($flights as $fl): $tr = Domain::SHIPMENT_TRANSITIONS[$fl['status']] ?? []; ?>
@@ -105,7 +105,7 @@ $today = class_exists('IntlDateFormatter')
     <section class="panel" aria-labelledby="att-title">
       <div class="panel-head"><h2 id="att-title">À traiter</h2><span class="muted small"><?= count($attention) ?></span></div>
       <?php if (!$attention): ?>
-        <p class="muted" style="margin:0">Rien d’urgent : aucun incident, aucun retard de vol, aucune facture échue.</p>
+        <p class="muted" style="margin:0">Rien d’urgent : aucun problème, aucun vol en retard, aucune facture en retard.</p>
       <?php else: ?>
         <ul class="attention">
           <?php foreach ($attention as $a): ?>
@@ -130,9 +130,9 @@ $today = class_exists('IntlDateFormatter')
     </section>
 
     <section class="panel" aria-labelledby="act-title">
-      <div class="panel-head"><h2 id="act-title">Derniers mouvements</h2></div>
+      <div class="panel-head"><h2 id="act-title">Derniers changements</h2></div>
       <?php if (!$activity): ?>
-        <p class="muted" style="margin:0">Les changements de statut des colis apparaîtront ici.</p>
+        <p class="muted" style="margin:0">Ce qui arrive aux colis s’affichera ici.</p>
       <?php else: ?>
         <ul class="feed">
           <?php foreach ($activity as $a): ?>
@@ -148,19 +148,19 @@ $today = class_exists('IntlDateFormatter')
     <section class="panel" aria-labelledby="money-title">
       <div class="panel-head"><h2 id="money-title">Argent</h2><span class="muted small"><?= e($periodLabel) ?></span></div>
       <?php if (!$finance): ?>
-        <p class="muted" style="margin:0">Aucune facture validée, aucun paiement ni dépense sur la période.</p>
+        <p class="muted" style="margin:0">Aucune facture, aucun paiement ni dépense sur la période.</p>
       <?php else: foreach ($finance as $cur => $f): ?>
         <table class="ledger" aria-label="Synthèse financière en <?= e($cur) ?>">
           <thead><tr><th scope="col"><?= e(Domain::CURRENCIES[$cur]['label'] ?? $cur) ?></th><th scope="col">Montant</th></tr></thead>
           <tbody>
             <tr><th scope="row">Facturé</th><td><?= e(money($f['billed'], $cur)) ?></td></tr>
-            <tr><th scope="row">Encaissé</th><td class="pos"><?= e(money($f['collected'], $cur)) ?></td></tr>
-            <tr><th scope="row">Reste à encaisser <span class="muted small">(toutes périodes)</span></th><td class="<?= $f['receivable'] > 0 ? 'neg' : '' ?>"><?= e(money($f['receivable'], $cur)) ?></td></tr>
+            <tr><th scope="row">Reçu des clients</th><td class="pos"><?= e(money($f['collected'], $cur)) ?></td></tr>
+            <tr><th scope="row">Reste à recevoir <span class="muted small">(depuis le début)</span></th><td class="<?= $f['receivable'] > 0 ? 'neg' : '' ?>"><?= e(money($f['receivable'], $cur)) ?></td></tr>
             <tr><th scope="row">Dépenses</th><td><?= e(money($f['expenses'], $cur)) ?></td></tr>
           </tbody>
         </table>
       <?php endforeach ?>
-        <p class="small muted" style="margin:10px 0 0">Facturé n’est pas encaissé, et aucune de ces lignes n’est un bénéfice : les montants sont présentés par devise, sans conversion.</p>
+        <p class="small muted" style="margin:10px 0 0">Attention : « facturé » ne veut pas dire « payé », et aucune ligne n’est le bénéfice. Chaque monnaie est comptée à part.</p>
       <?php endif ?>
     </section>
     <?php endif ?>
@@ -168,12 +168,12 @@ $today = class_exists('IntlDateFormatter')
     <section class="panel" aria-labelledby="del-title">
       <div class="panel-head"><h2 id="del-title">Remises</h2><a href="<?= e(url('livraisons')) ?>">Voir</a></div>
       <?php if ($delivery['done'] + $delivery['failed'] === 0): ?>
-        <p class="muted" style="margin:0">Aucune remise clôturée sur la période.</p>
+        <p class="muted" style="margin:0">Aucun colis remis sur la période.</p>
       <?php else: ?>
-        <div class="kv-line"><span>Remises confirmées</span><strong class="num"><?= $delivery['done'] ?></strong></div>
-        <div class="kv-line"><span>Tentatives échouées</span><strong class="num"><?= $delivery['failed'] ?></strong></div>
-        <div class="kv-line"><span>Livrées au premier passage</span><strong class="num"><?= $delivery['first_attempt_rate'] === null ? '—' : $delivery['first_attempt_rate'] . ' %' ?></strong></div>
-        <div class="kv-line"><span>Délai moyen, comptoir à remise</span><strong class="num"><?= $delivery['avg_days'] === null ? '—' : e(str_replace('.', ',', (string) $delivery['avg_days'])) . ' j' ?></strong></div>
+        <div class="kv-line"><span>Colis remis</span><strong class="num"><?= $delivery['done'] ?></strong></div>
+        <div class="kv-line"><span>Pas pu livrer</span><strong class="num"><?= $delivery['failed'] ?></strong></div>
+        <div class="kv-line"><span>Livrés du premier coup</span><strong class="num"><?= $delivery['first_attempt_rate'] === null ? '—' : $delivery['first_attempt_rate'] . ' %' ?></strong></div>
+        <div class="kv-line"><span>Temps moyen du dépôt à la remise</span><strong class="num"><?= $delivery['avg_days'] === null ? '—' : e(str_replace('.', ',', (string) $delivery['avg_days'])) . ' j' ?></strong></div>
       <?php endif ?>
     </section>
 

@@ -67,6 +67,7 @@ try {
         header('Content-Type: text/html; charset=utf-8');
         if (Auth::user()) {
             header('Cache-Control: private, no-store');
+            header('Speculation-Rules: "' . url('prechargement.json') . '"');
         }
         echo $output;
     }

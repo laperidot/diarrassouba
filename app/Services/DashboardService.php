@@ -214,7 +214,7 @@ final class DashboardService
              ORDER BY p.status_changed_at LIMIT 6",
             [$limit]
         ) as $r) {
-            $items[] = ['tone' => 'wait', 'title' => $r['tracking_code'] . ' attend au dépôt', 'detail' => 'Disponible ' . ago($r['status_changed_at']) . ', aucun retrait planifié', 'url' => url('colis/' . $r['id'])];
+            $items[] = ['tone' => 'wait', 'title' => $r['tracking_code'] . ' attend au dépôt', 'detail' => 'Prêt ' . ago($r['status_changed_at']) . ', personne n’est encore venu le chercher', 'url' => url('colis/' . $r['id'])];
         }
         foreach ($this->db->all(
             "SELECT id, reference, planned_departure, planned_arrival, status FROM shipments
@@ -223,8 +223,8 @@ final class DashboardService
              ORDER BY planned_departure LIMIT 6",
             [gmdate('Y-m-d H:i:s'), gmdate('Y-m-d H:i:s', time() - 6 * 3600)]
         ) as $r) {
-            $late = $r['status'] === 'preparation' ? 'Départ prévu le ' . dt($r['planned_departure'], 'd/m H:i') . ' non confirmé' : 'Arrivée prévue le ' . dt($r['planned_arrival'], 'd/m H:i') . ' non confirmée';
-            $items[] = ['tone' => 'air', 'title' => 'Dossier ' . $r['reference'], 'detail' => $late, 'url' => url('dossiers/' . $r['id'])];
+            $late = $r['status'] === 'preparation' ? 'Devait partir le ' . dt($r['planned_departure'], 'd/m H:i') . ' : le départ n’a pas été confirmé' : 'Devait arriver le ' . dt($r['planned_arrival'], 'd/m H:i') . ' : l’arrivée n’a pas été confirmée';
+            $items[] = ['tone' => 'air', 'title' => 'Vol ' . $r['reference'] . ' en retard ?', 'detail' => $late, 'url' => url('dossiers/' . $r['id'])];
         }
         if ($withFinance) {
             $today = (new \DateTimeImmutable('now', local_tz()))->format('Y-m-d');
@@ -233,11 +233,11 @@ final class DashboardService
                  WHERE i.kind = 'invoice' AND i.status IN ('validated','partial') AND i.due_date < ? ORDER BY i.due_date LIMIT 6",
                 [$today]
             ) as $r) {
-                $items[] = ['tone' => 'alert', 'title' => 'Facture ' . $r['number'] . ' échue', 'detail' => $r['name'] . ', reste ' . money((int) $r['due'], $r['currency']) . ' depuis le ' . d($r['due_date']), 'url' => url('factures/' . $r['id'])];
+                $items[] = ['tone' => 'alert', 'title' => 'Facture ' . $r['number'] . ' en retard', 'detail' => $r['name'] . ' doit encore ' . money((int) $r['due'], $r['currency']) . ' (à payer avant le ' . d($r['due_date']) . ')', 'url' => url('factures/' . $r['id'])];
             }
             $drafts = (int) $this->db->value("SELECT COUNT(*) FROM invoices WHERE status = 'draft'");
             if ($drafts) {
-                $items[] = ['tone' => 'ground', 'title' => pluralize($drafts, 'brouillon de facture', 'brouillons de facture') . ' à valider', 'detail' => 'Non numérotés, donc non exigibles', 'url' => url('factures', ['status' => 'draft'])];
+                $items[] = ['tone' => 'ground', 'title' => pluralize($drafts, 'facture pas encore terminée', 'factures pas encore terminées'), 'detail' => 'À vérifier puis valider pour pouvoir les envoyer', 'url' => url('factures', ['status' => 'draft'])];
             }
         }
         return $items;

@@ -83,9 +83,6 @@ final class PaymentService
         if (!isset(Domain::PAYMENT_METHODS[$method])) {
             $errors['method'] = 'Choisissez le moyen de paiement.';
         }
-        if ($method !== 'cash' && $method !== '' && $reference === null) {
-            $errors['reference'] = 'La référence de transaction est obligatoire pour ce moyen de paiement.';
-        }
         if (!preg_match('/^[a-f0-9]{32}$/', $token)) {
             $errors['form_token'] = 'Formulaire expiré : rechargez la page.';
         }
@@ -100,14 +97,14 @@ final class PaymentService
                 throw new BusinessException('Facture introuvable.');
             }
             if ($inv['kind'] !== 'invoice' || !in_array($inv['status'], ['validated', 'partial'], true)) {
-                throw new BusinessException('Un paiement ne peut être enregistré que sur une facture validée non soldée.');
+                throw new BusinessException('Cette facture n’attend pas de paiement (pas terminée, déjà payée ou annulée).');
             }
             $amount = Money::parse((string) ($in['amount'] ?? ''), $inv['currency']);
             $balance = (int) $inv['total_minor'] - (int) $inv['paid_minor'];
             if ($amount === null || $amount <= 0) {
                 $errors['amount'] = 'Montant invalide.';
             } elseif ($amount > $balance) {
-                $errors['amount'] = 'Montant supérieur au solde restant (' . Money::format($balance, $inv['currency']) . ').';
+                $errors['amount'] = 'Montant plus grand que le reste à payer (' . Money::format($balance, $inv['currency']) . ').';
             }
             if ($this->db->value('SELECT id FROM payments WHERE form_token = ?', [$token])) {
                 throw new BusinessException('Ce paiement a déjà été enregistré (double envoi du formulaire).');
@@ -152,7 +149,7 @@ final class PaymentService
     {
         $reason = trim($reason);
         if (mb_strlen($reason) < 5) {
-            throw new ValidationException(['reason' => 'Indiquez le motif de l’annulation (5 caractères minimum).']);
+            throw new ValidationException(['reason' => 'Expliquez en quelques mots pourquoi vous annulez.']);
         }
         return $this->db->tx(function () use ($paymentId, $reason) {
             $pay = $this->db->one('SELECT * FROM payments WHERE id = ?' . $this->db->forUpdate(), [$paymentId]);

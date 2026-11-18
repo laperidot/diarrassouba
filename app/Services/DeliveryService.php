@@ -71,7 +71,7 @@ final class DeliveryService
             $p[] = $f['mode'];
         }
         return $this->db->all(
-            "SELECT d.*, p.tracking_code, p.description, p.delivery_contact_name, r.name AS recipient_client, r.phone AS recipient_phone, u.name AS agent_name
+            "SELECT d.*, p.tracking_code, p.description, p.delivery_contact_name, p.delivery_contact_phone, r.name AS recipient_client, r.phone AS recipient_phone, r.address AS recipient_address, u.name AS agent_name
              FROM deliveries d JOIN parcels p ON p.id = d.parcel_id JOIN clients r ON r.id = p.recipient_id
              LEFT JOIN users u ON u.id = d.agent_id
              WHERE $w ORDER BY CASE d.status WHEN 'in_progress' THEN 0 WHEN 'planned' THEN 1 ELSE 2 END, d.planned_date, d.id DESC
@@ -135,10 +135,10 @@ final class DeliveryService
                 throw new BusinessException('Colis introuvable.');
             }
             if (!in_array($p['status'], ['arrived', 'at_depot', 'delivery_failed'], true)) {
-                throw new BusinessException('Le colis doit être arrivé à destination (ou au dépôt) pour planifier sa remise.');
+                throw new BusinessException('Le colis doit être arrivé avant de pouvoir être remis.');
             }
             if ($this->db->value("SELECT id FROM deliveries WHERE parcel_id = ? AND status IN ('planned','in_progress')", [$parcelId])) {
-                throw new BusinessException('Une remise est déjà planifiée pour ce colis.');
+                throw new BusinessException('Une livraison est déjà prévue pour ce colis.');
             }
             $attempt = (int) $this->db->value('SELECT COUNT(*) FROM deliveries WHERE parcel_id = ?', [$parcelId]) + 1;
             $id = $this->db->insert('deliveries', [
@@ -148,6 +148,16 @@ final class DeliveryService
                 'created_at' => Db::now(), 'updated_at' => Db::now(),
             ]);
             Audit::log('delivery.planned', 'delivery', $id, ['parcel_id' => $parcelId, 'mode' => $mode]);
+            return $id;
+        });
+    }
+
+    /** Remise au guichet en une seule étape : le destinataire est devant le comptoir (retrait planifié puis confirmé). */
+    public function handOver(int $parcelId, array $in, ?array $proof): int
+    {
+        return $this->db->tx(function () use ($parcelId, $in, $proof) {
+            $id = $this->plan($parcelId, ['mode' => 'pickup', 'planned_date' => (new \DateTimeImmutable('now', local_tz()))->format('Y-m-d')]);
+            $this->confirm($id, $in, $proof);
             return $id;
         });
     }
@@ -170,7 +180,7 @@ final class DeliveryService
         $d = $this->db->tx(function () use ($id) {
             $d = $this->lockOwn($id);
             if ($d['status'] !== 'planned' || $d['mode'] !== 'delivery') {
-                throw new BusinessException('Seule une livraison planifiée peut être démarrée.');
+                throw new BusinessException('Cette livraison est déjà partie ou terminée.');
             }
             $this->db->update('deliveries', ['status' => 'in_progress', 'updated_at' => Db::now()], 'id = ?', [$id]);
             Audit::log('delivery.started', 'delivery', $id);
@@ -203,7 +213,7 @@ final class DeliveryService
         $d = $this->db->tx(function () use ($id, $in, $name, $proof) {
             $d = $this->lockOwn($id);
             if (!in_array($d['status'], ['planned', 'in_progress'], true)) {
-                throw new BusinessException('Cette remise est déjà clôturée.');
+                throw new BusinessException('Ce colis est déjà remis, ou la livraison est terminée.');
             }
             if ($d['mode'] === 'delivery' && $d['status'] !== 'in_progress') {
                 throw new BusinessException('Démarrez la livraison avant de confirmer la remise.');
@@ -237,12 +247,12 @@ final class DeliveryService
     public function fail(int $id, string $incident): void
     {
         if (mb_strlen(trim($incident)) < 3) {
-            throw new ValidationException(['incident' => 'Décrivez le motif de l’échec (absent, adresse introuvable…).']);
+            throw new ValidationException(['incident' => 'Dites ce qui s’est passé (client absent, adresse introuvable…).']);
         }
         $d = $this->db->tx(function () use ($id, $incident) {
             $d = $this->lockOwn($id);
             if (!in_array($d['status'], ['planned', 'in_progress'], true)) {
-                throw new BusinessException('Cette remise est déjà clôturée.');
+                throw new BusinessException('Ce colis est déjà remis, ou la livraison est terminée.');
             }
             $this->db->update('deliveries', ['status' => 'failed', 'incident' => mb_substr(trim($incident), 0, 500), 'updated_at' => Db::now()], 'id = ?', [$id]);
             Audit::log('delivery.failed', 'delivery', $id);
@@ -262,7 +272,7 @@ final class DeliveryService
         $this->db->tx(function () use ($id) {
             $d = $this->lockOwn($id);
             if ($d['status'] !== 'planned') {
-                throw new BusinessException('Seule une remise planifiée (non démarrée) peut être annulée.');
+                throw new BusinessException('On ne peut annuler qu’une livraison pas encore partie.');
             }
             $this->db->update('deliveries', ['status' => 'cancelled', 'updated_at' => Db::now()], 'id = ?', [$id]);
             Audit::log('delivery.cancelled', 'delivery', $id);

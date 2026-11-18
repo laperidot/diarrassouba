@@ -1,6 +1,6 @@
 <p class="eyebrow">Espace de l’équipe</p>
 <h1 style="margin-bottom:6px">Connexion</h1>
-<p class="muted" style="margin-bottom:22px">Comptoir, piste, caisse et livraison : un seul accès.</p>
+<p class="muted" style="margin-bottom:22px">Comptoir, vols, caisse et livraison : une seule application.</p>
 <?php if ($needsInstall): ?>
   <div class="flash flash-info"><?= icon('key') ?><span>Aucun compte n’existe encore. Créez le premier administrateur avec <code>php bin/create-admin.php</code> ou la page <a href="<?= e(url('installation')) ?>">d’installation</a> (jeton requis).</span></div>
 <?php endif ?>

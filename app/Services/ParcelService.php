@@ -95,16 +95,26 @@ final class ParcelService
         return $id ? $this->find((int) $id) : null;
     }
 
-    /** Liste filtrée et paginée. Filtres : q, status, shipment_id, destination, from, to, unbilled. */
+    /** Situation de paiement d'un colis, d'après sa facture active (filtre « paiement » et colonne de la liste). */
+    public const PAYMENT_STATES = [
+        'unbilled' => 'Non facturé', 'draft' => 'Facture à terminer', 'due' => 'À payer',
+        'overdue' => 'En retard', 'partial' => 'Payé en partie', 'paid' => 'Payé',
+    ];
+
+    /** Liste filtrée et paginée. Filtres : q, status, shipment_id, destination, from, to, unbilled, payment. */
     public function list(array $f, int $limit = 30, int $offset = 0): array
     {
         [$where, $params] = $this->filters($f);
         return $this->db->all(
             "SELECT p.id, p.tracking_code, p.description, p.weight_g, p.billable_weight_g, p.amount_minor, p.currency, p.status,
                     p.received_at, p.destination_city, p.destination_country, p.status_changed_at, p.pieces,
-                    s.name AS sender_name, r.name AS recipient_name, sh.reference AS shipment_reference
+                    s.name AS sender_name, r.name AS recipient_name, sh.reference AS shipment_reference,
+                    i.id AS invoice_id, i.number AS invoice_number, i.status AS invoice_status, i.due_date AS invoice_due_date,
+                    i.total_minor AS invoice_total_minor, i.paid_minor AS invoice_paid_minor
              FROM parcels p JOIN clients s ON s.id = p.sender_id JOIN clients r ON r.id = p.recipient_id
              LEFT JOIN shipments sh ON sh.id = p.shipment_id
+             LEFT JOIN invoice_items ii ON ii.parcel_id = p.id AND ii.billing_lock = 1
+             LEFT JOIN invoices i ON i.id = ii.invoice_id
              WHERE $where ORDER BY p.received_at DESC, p.id DESC LIMIT $limit OFFSET $offset",
             $params
         );
@@ -180,6 +190,20 @@ final class ParcelService
         }
         if (!empty($f['unbilled'])) {
             $w[] = 'NOT EXISTS (SELECT 1 FROM invoice_items ii WHERE ii.parcel_id = p.id AND ii.billing_lock = 1)';
+        }
+        if (!empty($f['payment']) && isset(self::PAYMENT_STATES[$f['payment']])) {
+            $active = 'SELECT 1 FROM invoice_items ii2 JOIN invoices i2 ON i2.id = ii2.invoice_id WHERE ii2.parcel_id = p.id AND ii2.billing_lock = 1';
+            if ($f['payment'] === 'unbilled') {
+                $w[] = "NOT EXISTS ($active)";
+            } elseif ($f['payment'] === 'due') {
+                $w[] = "EXISTS ($active AND i2.status IN ('validated','partial'))";
+            } elseif ($f['payment'] === 'overdue') {
+                $w[] = "EXISTS ($active AND i2.status IN ('validated','partial') AND i2.due_date < ?)";
+                $p[] = (new \DateTimeImmutable('now', local_tz()))->format('Y-m-d');
+            } else {
+                $w[] = "EXISTS ($active AND i2.status = ?)";
+                $p[] = $f['payment'];
+            }
         }
         if (!empty($f['currency'])) {
             $w[] = 'p.currency = ?';
@@ -324,8 +348,8 @@ final class ParcelService
             || $data['billable_weight_g'] !== (int) $existing['billable_weight_g'];
         if ($billingChanged && ($inv = $this->activeInvoice($id))) {
             throw new BusinessException(sprintf(
-                'Ce colis figure sur la facture %s : son poids, son tarif et sa devise ne peuvent plus être modifiés. Retirez-le du brouillon ou annulez la facture d’abord.',
-                $inv['number'] ?? 'brouillon #' . $inv['id']
+                'Ce colis est sur la facture %s : son poids et son prix ne peuvent plus changer. Retirez-le de la facture (si elle n’est pas terminée) ou annulez la facture d’abord.',
+                $inv['number'] ?? 'à terminer #' . $inv['id']
             ));
         }
         if (!Auth::can('parcels.finance')) {
@@ -364,17 +388,17 @@ final class ParcelService
             }
             $from = $p['status'];
             if ($from === $to) {
-                throw new BusinessException('Le colis est déjà au statut « ' . Domain::parcelLabel($to) . ' ».');
+                throw new BusinessException('Le colis est déjà « ' . Domain::parcelLabel($to) . ' ».');
             }
             if (!isset(Domain::parcelStatuses()[$to])) {
-                throw new BusinessException('Statut inconnu.');
+                throw new BusinessException('Étape inconnue.');
             }
             if (in_array($to, Domain::PARCEL_STATUS_RESERVED, true) && ($opts['via'] ?? null) !== 'delivery') {
                 throw new BusinessException('La remise d’un colis se confirme depuis le module Livraisons (nom du destinataire et confirmation obligatoires).');
             }
             $viaShipment = ($opts['via'] ?? null) === 'shipment';
             if (!Domain::canParcelTransition($from, $to) && !($viaShipment && in_array($to, ['shipped', 'in_transit', 'arrived'], true) && in_array($from, ['registered', 'awaiting', 'shipped', 'in_transit'], true))) {
-                throw new BusinessException(sprintf('Passage de « %s » à « %s » non autorisé.', Domain::parcelLabel($from), Domain::parcelLabel($to)));
+                throw new BusinessException(sprintf('Le colis ne peut pas passer de « %s » à « %s ».', Domain::parcelLabel($from), Domain::parcelLabel($to)));
             }
             $occurred = !empty($opts['occurred_at']) ? (local_to_utc($opts['occurred_at']) ?? Db::now()) : Db::now();
             if ($occurred > gmdate('Y-m-d H:i:s', time() + 600)) {

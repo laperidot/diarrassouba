@@ -50,7 +50,7 @@ final class PaymentController extends Controller
         $pay = (new PaymentService())->find((int) $id);
         $this->notFoundUnless($pay);
         $this->attempt(fn () => (new PaymentService())->reverse((int) $id, Request::str('reason')), 'factures/' . $pay['invoice_id']);
-        Session::flash('success', 'Paiement annulé par une écriture de contrepassation. Le solde a été recalculé.');
+        Session::flash('success', 'Paiement annulé. Le reste à payer a été recalculé.');
         $this->redirect('factures/' . $pay['invoice_id']);
     }
 

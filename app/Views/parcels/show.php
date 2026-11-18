@@ -13,6 +13,16 @@ $openDelivery = array_values(array_filter($deliveries, fn ($d) => in_array($d['s
     <?php if (can('parcels.edit')): ?><a class="btn" href="<?= e(url('colis/' . $p['id'] . '/modifier')) ?>"><?= icon('edit') ?>Modifier</a><?php endif ?>
   </div>
 </div>
+<?php if (($_GET['suite'] ?? '') === '1' && can('parcels.create')): ?>
+<section class="panel next-parcel" aria-labelledby="next-parcel-title">
+  <h2 id="next-parcel-title">Et maintenant ?</h2>
+  <div class="next-parcel-actions">
+    <a class="btn btn-go btn-lg" href="<?= e(url('colis/' . $p['id'] . '/etiquette')) ?>" target="_blank" rel="noopener" autofocus><?= icon('print') ?>1. Imprimer l’étiquette</a>
+    <a class="btn btn-lg" href="<?= e(url('colis/nouveau', ['expediteur' => $p['sender_id'], 'destination' => $p['destination_country'], 'ville' => $p['destination_city']])) ?>"><?= icon('plus') ?>2. Autre colis de <?= e($p['sender_name']) ?></a>
+    <a class="btn btn-quiet btn-lg" href="<?= e(url('colis/nouveau')) ?>"><?= icon('plus') ?>Colis d’un autre client</a>
+  </div>
+</section>
+<?php endif ?>
 
 <div class="grid grid-main">
   <div class="stack">
@@ -31,22 +41,22 @@ $openDelivery = array_values(array_filter($deliveries, fn ($d) => in_array($d['s
     <?php if (can('parcels.status') && $transitions): ?>
     <section class="panel">
       <details class="inline-form"<?= App\Core\Session::errors() ? ' open' : '' ?>>
-        <summary class="btn btn-block"><?= icon('route') ?>Changer le statut</summary>
+        <summary class="btn btn-block"><?= icon('route') ?>Dire où en est le colis</summary>
         <form method="post" action="<?= e(url('colis/' . $p['id'] . '/statut')) ?>">
           <?= csrf_field() ?>
-          <div class="field"><label for="status">Nouveau statut</label>
+          <div class="field"><label for="status">Le colis est maintenant…</label>
             <select id="status" name="status" required>
               <?php foreach ($transitions as $t): ?><option value="<?= $t ?>"><?= e(Domain::parcelLabel($t)) ?></option><?php endforeach ?>
             </select>
-            <span class="hint">Seuls les passages cohérents avec le statut actuel sont proposés. La remise se confirme depuis une livraison.</span>
+            <span class="hint">Seules les étapes possibles sont proposées. Pour la remise au client, utilisez le bloc « Remise au destinataire ».</span>
           </div>
           <div class="row row-2">
             <div class="field"><label for="location">Lieu</label><input id="location" name="location" placeholder="Ex. : Aéroport FHB, Abidjan"></div>
-            <div class="field"><label for="occurred_at">Date et heure</label><input id="occurred_at" name="occurred_at" type="datetime-local"><span class="hint">Vide = maintenant.</span></div>
+            <div class="field"><label for="occurred_at">Date et heure</label><input id="occurred_at" name="occurred_at" type="datetime-local"><span class="hint">Laissez vide pour maintenant.</span></div>
           </div>
           <div class="field"><label for="public_comment">Message visible par le client</label><input id="public_comment" name="public_comment" maxlength="255"></div>
-          <div class="field"><label for="internal_comment">Note interne</label><input id="internal_comment" name="internal_comment" maxlength="500"></div>
-          <button class="btn btn-primary">Enregistrer le statut</button>
+          <div class="field"><label for="internal_comment">Note pour l’équipe</label><input id="internal_comment" name="internal_comment" maxlength="500"></div>
+          <button class="btn btn-primary">Enregistrer</button>
         </form>
       </details>
     </section>
@@ -88,8 +98,8 @@ $openDelivery = array_values(array_filter($deliveries, fn ($d) => in_array($d['s
         <?php endforeach ?>
         </div>
       <?php else: ?>
-        <p class="muted small" style="margin-top:-6px">Aucun vol en préparation vers <?= e(country_name($p['destination_country'])) ?>. Créez le dossier du prochain vol : la destination est déjà remplie.</p>
-        <a class="btn btn-go btn-block" href="<?= e(url('dossiers/nouveau', ['destination' => $p['destination_country']])) ?>"><?= icon('plus') ?>Créer le dossier du vol</a>
+        <p class="muted small" style="margin-top:-6px">Aucun vol en préparation vers <?= e(country_name($p['destination_country'])) ?>. Créez le prochain vol : la destination est déjà remplie.</p>
+        <a class="btn btn-go btn-block" href="<?= e(url('dossiers/nouveau', ['destination' => $p['destination_country']])) ?>"><?= icon('plus') ?>Créer un vol</a>
       <?php endif ?>
     </section>
     <?php endif ?>
@@ -101,23 +111,23 @@ $openDelivery = array_values(array_filter($deliveries, fn ($d) => in_array($d['s
         <?php if ($p['delivery_contact_name']): ?><dt>Contact à l’arrivée</dt><dd><?= e($p['delivery_contact_name']) ?></dd><?php endif ?>
         <dt>Poids pesé</dt><dd class="num"><?= e(kg((int) $p['weight_g'])) ?>, <?= (int) $p['pieces'] ?> pièce<?= $p['pieces'] > 1 ? 's' : '' ?></dd>
         <?php if (can('parcels.finance') || can('invoices.view')): ?>
-        <dt>Poids facturé</dt><dd class="num"><?= e(kg((int) $p['billable_weight_g'])) ?></dd>
-        <dt>Tarif</dt><dd class="num"><?= e(money((int) $p['rate_per_kg_minor'], $p['currency'])) ?> / kg</dd>
-        <dt>Montant transport</dt><dd class="num"><strong><?= e(money((int) $p['amount_minor'], $p['currency'])) ?></strong></dd>
+        <dt>Poids compté</dt><dd class="num"><?= e(kg((int) $p['billable_weight_g'])) ?></dd>
+        <dt>Prix au kilo</dt><dd class="num"><?= e(money((int) $p['rate_per_kg_minor'], $p['currency'])) ?> / kg</dd>
+        <dt>Prix du transport</dt><dd class="num"><strong><?= e(money((int) $p['amount_minor'], $p['currency'])) ?></strong></dd>
         <?php endif ?>
-        <dt>Paiement</dt><dd><?= e(Domain::PAYMENT_TERMS[$p['payment_terms'] ?? ''] ?? 'Selon la fiche client') ?></dd>
+        <dt>Paiement</dt><dd><?= e(Domain::PAYMENT_TERMS[$p['payment_terms'] ?? ''] ?? 'Comme d’habitude pour ce client') ?></dd>
         <dt>Reçu le</dt><dd><?= e(dt($p['received_at'])) ?></dd>
-        <dt>Dossier</dt><dd><?php if ($p['shipment_id']): ?><a href="<?= e(url('dossiers/' . $p['shipment_id'])) ?>"><?= e($p['shipment_reference']) ?></a><?= $p['flight_number'] ? ', vol ' . e($p['flight_number']) : '' ?><?php else: ?><span class="muted">Pas encore affecté à un vol</span><?php endif ?></dd>
-        <dt>Suivi public</dt><dd><?= $p['public_weight'] ? 'Poids affiché' : 'Poids masqué' ?></dd>
+        <dt>Vol</dt><dd><?php if ($p['shipment_id']): ?><a href="<?= e(url('dossiers/' . $p['shipment_id'])) ?>"><?= e($p['shipment_reference']) ?></a><?= $p['flight_number'] ? ', vol ' . e($p['flight_number']) : '' ?><?php else: ?><span class="muted">Pas encore affecté à un vol</span><?php endif ?></dd>
+        <dt>Page de suivi</dt><dd><?= $p['public_weight'] ? 'Le client voit le poids' : 'Poids caché au client' ?></dd>
       </dl>
-      <?php if ($p['internal_notes'] && can('parcels.internal')): ?><hr><p class="small"><strong>Observations :</strong> <?= nl2br(e($p['internal_notes'])) ?></p><?php endif ?>
+      <?php if ($p['internal_notes'] && can('parcels.internal')): ?><hr><p class="small"><strong>Note pour l’équipe :</strong> <?= nl2br(e($p['internal_notes'])) ?></p><?php endif ?>
     </section>
 
     <?php if (can('invoices.view')): ?>
     <section class="panel">
-      <h2 style="margin-bottom:8px">Facturation</h2>
+      <h2 style="margin-bottom:8px">Facture</h2>
       <?php if ($invoice): ?>
-        <p style="margin:0">Facturé sur <a href="<?= e(url('factures/' . $invoice['id'])) ?>"><?= e($invoice['number'] ?? 'brouillon #' . $invoice['id']) ?></a> <?= status_badge($invoice['status'], 'invoice') ?></p>
+        <p style="margin:0">Sur la facture <a href="<?= e(url('factures/' . $invoice['id'])) ?>"><?= e($invoice['number'] ?? 'brouillon #' . $invoice['id']) ?></a> <?= status_badge($invoice['status'], 'invoice') ?></p>
       <?php else: ?>
         <p class="muted" style="margin:0 0 10px">Ce colis n’est sur aucune facture.</p>
         <?php if (can('invoices.edit')): ?>
@@ -130,24 +140,37 @@ $openDelivery = array_values(array_filter($deliveries, fn ($d) => in_array($d['s
     </section>
     <?php endif ?>
 
-    <section class="panel">
+    <section class="panel" id="remise">
       <h2 style="margin-bottom:8px">Remise au destinataire</h2>
       <?php if ($openDelivery): ?>
         <p style="margin:0 0 10px"><?= e(Domain::DELIVERY_MODES[$openDelivery['mode']]) ?> <?= status_badge($openDelivery['status'], 'delivery') ?></p>
         <a class="btn btn-primary btn-block" href="<?= e(url('livraisons/' . $openDelivery['id'])) ?>">Ouvrir la remise</a>
       <?php elseif (can('deliveries.manage') && in_array($p['status'], ['arrived', 'at_depot', 'delivery_failed'], true)): ?>
+        <?php if (can('deliveries.confirm')): ?>
+        <p class="small muted" style="margin:0 0 10px">Le destinataire est au comptoir ? Remettez le colis en une seule étape.</p>
+        <form method="post" enctype="multipart/form-data" action="<?= e(url('colis/' . $p['id'] . '/remise')) ?>" class="handover" data-once>
+          <?= csrf_field() ?>
+          <div class="field"><label for="ho_name">Nom de la personne qui reçoit</label><input id="ho_name" name="recipient_name" required value="<?= old('recipient_name', $p['delivery_contact_name'] ?: $p['recipient_name']) ?>"<?= invalid('recipient_name') ?>><?= field_error('recipient_name') ?></div>
+          <div class="field"><label for="ho_id">Pièce d’identité vue <span class="muted">(facultatif : type et 4 derniers chiffres)</span></label><input id="ho_id" name="recipient_id_note" maxlength="120" placeholder="CNI …1234"></div>
+          <label class="check"><input type="checkbox" name="confirm" value="1" required<?= invalid('confirm') ?>> J’ai bien donné le colis <?= e($p['tracking_code']) ?> à cette personne.</label>
+          <?= field_error('confirm') ?>
+          <button class="btn btn-go btn-block"><?= icon('check') ?>Remettre le colis maintenant</button>
+        </form>
+        <details class="inline-form" style="margin-top:12px"><summary class="btn btn-block">Prévoir une livraison à domicile…</summary>
+        <?php endif ?>
         <form method="post" action="<?= e(url('colis/' . $p['id'] . '/livraison')) ?>">
           <?= csrf_field() ?>
-          <div class="field"><label for="mode">Mode</label><select id="mode" name="mode"><?php foreach (Domain::DELIVERY_MODES as $k => $l): ?><option value="<?= $k ?>"><?= e($l) ?></option><?php endforeach ?></select></div>
-          <div class="field"><label for="agent_id">Responsable</label><select id="agent_id" name="agent_id"<?= invalid('agent_id') ?>><option value="">—</option><?php foreach ($agents as $a): ?><option value="<?= (int) $a['id'] ?>"><?= e($a['name']) ?></option><?php endforeach ?></select><?= field_error('agent_id') ?></div>
+          <div class="field"><label for="mode">Comment</label><select id="mode" name="mode"><?php foreach (Domain::DELIVERY_MODES as $k => $l): ?><option value="<?= $k ?>"><?= e($l) ?></option><?php endforeach ?></select></div>
+          <div class="field"><label for="agent_id">Livreur</label><select id="agent_id" name="agent_id"<?= invalid('agent_id') ?>><option value="">—</option><?php foreach ($agents as $a): ?><option value="<?= (int) $a['id'] ?>"><?= e($a['name']) ?></option><?php endforeach ?></select><?= field_error('agent_id') ?></div>
           <div class="field"><label for="planned_date">Date prévue</label><input id="planned_date" name="planned_date" type="date"></div>
           <div class="field"><label for="address">Adresse de livraison</label><input id="address" name="address" value="<?= e($p['recipient_address'] ?? '') ?>"></div>
-          <button class="btn btn-primary btn-block">Planifier la remise</button>
+          <button class="btn btn-primary btn-block">Prévoir</button>
         </form>
+        <?php if (can('deliveries.confirm')): ?></details><?php endif ?>
       <?php elseif ($p['status'] === 'delivered'): ?>
         <p class="muted" style="margin:0">Colis remis.</p>
       <?php else: ?>
-        <p class="muted" style="margin:0">La remise se planifie quand le colis est arrivé à destination.</p>
+        <p class="muted" style="margin:0">Vous pourrez remettre le colis quand il sera arrivé.</p>
       <?php endif ?>
       <?php foreach ($deliveries as $d): if ($openDelivery && $d['id'] === $openDelivery['id']) continue; ?>
         <div class="kv-line"><a href="<?= e(url('livraisons/' . $d['id'])) ?>">Tentative <?= (int) $d['attempt_no'] ?></a><?= status_badge($d['status'], 'delivery') ?></div>
@@ -156,16 +179,16 @@ $openDelivery = array_values(array_filter($deliveries, fn ($d) => in_array($d['s
 
     <?php if (can('parcels.internal')): ?>
     <section class="panel">
-      <h2 style="margin-bottom:8px">Pièces jointes</h2>
+      <h2 style="margin-bottom:8px">Photos et documents</h2>
       <?php foreach ($attachments as $a): ?>
         <div class="kv-line"><a href="<?= e(url('fichiers/colis/' . $a['id'])) ?>" target="_blank" rel="noopener"><?= e($a['original_name']) ?></a><span class="small muted"><?= e(dt($a['created_at'], 'd/m/Y')) ?></span></div>
       <?php endforeach ?>
-      <?php if (!$attachments): ?><p class="muted small">Aucune pièce jointe.</p><?php endif ?>
+      <?php if (!$attachments): ?><p class="muted small">Aucune photo ni document.</p><?php endif ?>
       <?php if (can('parcels.edit')): ?>
       <form method="post" enctype="multipart/form-data" action="<?= e(url('colis/' . $p['id'] . '/pieces')) ?>" style="margin-top:10px">
         <?= csrf_field() ?>
         <div class="field"><label for="attachment">Ajouter une photo ou un PDF</label><input id="attachment" name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment" required></div>
-        <button class="btn btn-sm">Joindre</button>
+        <button class="btn btn-sm">Ajouter</button>
       </form>
       <?php endif ?>
     </section>

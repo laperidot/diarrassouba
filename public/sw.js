@@ -3,7 +3,7 @@
  * - seuls les fichiers statiques publics (CSS, JS, icônes, polices, page hors ligne) le sont ;
  * - hors connexion, une page dédiée explique la situation ; aucune opération n'est simulée.
  */
-const VERSION = 'di-v2.3.0';
+const VERSION = 'di-v2.9.0';
 const STATIC = VERSION + '-static';
 const scope = self.registration.scope; // se termine par /
 const PRECACHE = ['offline.html', 'assets/css/app.css', 'assets/js/app.js', 'assets/js/public.js', 'assets/js/theme.js', 'assets/icons/icon.svg', 'assets/icons/icon-192.png', 'manifest.webmanifest'].map((p) => new URL(p, scope).toString());

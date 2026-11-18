@@ -20,7 +20,7 @@
     var t = effective();
     root.setAttribute('data-theme', t);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) { meta.setAttribute('content', t === 'dark' ? '#0C0D10' : '#EEE9DF'); }
+    if (meta) { meta.setAttribute('content', t === 'dark' ? '#0C0D10' : '#FFFFFF'); }
     var pref = stored() || 'auto';
     var buttons = document.querySelectorAll('[data-theme-set]');
     for (var i = 0; i < buttons.length; i++) {
@@ -60,4 +60,17 @@
     // Transitions douces seulement après le premier affichage (pas d'animation au chargement)
     requestAnimationFrame(function () { root.classList.add('theme-ready'); });
   });
+})();
+
+/* Transitions entre pages : une transition interrompue (rechargement, retour rapide, clic pendant
+   l'animation) n'est pas une erreur. Écouté ici, dans <head>, pour être prêt avant le premier affichage. */
+(function () {
+  'use strict';
+  function quiet(e) {
+    var vt = e.viewTransition;
+    if (!vt) return;
+    [vt.ready, vt.finished, vt.updateCallbackDone].forEach(function (p) { if (p && p.catch) p.catch(function () {}); });
+  }
+  window.addEventListener('pagereveal', quiet);
+  window.addEventListener('pageswap', quiet);
 })();

@@ -13,6 +13,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use App\Core\Auth;
 use App\Core\Config;
 use App\Core\Db;
+use App\Core\Domain;
 use App\Services\ClientService;
 use App\Services\DeliveryService;
 use App\Services\ExpenseService;
@@ -27,8 +28,9 @@ if (Config::get('APP_ENV') === 'production') {
     exit(1);
 }
 $db = Db::get();
-if ((int) $db->value('SELECT COUNT(*) FROM parcels') > 0) {
-    fwrite(STDERR, "La base contient déjà des colis : démonstration non ajoutée.\n");
+// Additif : les données déjà saisies sont conservées ; on refuse seulement un second ajout de la démonstration.
+if ($db->value("SELECT id FROM users WHERE email = 'manager@diarrassouba.test'")) {
+    fwrite(STDERR, "La démonstration est déjà présente dans cette base : rien n'a été ajouté.\n");
     exit(1);
 }
 $admin = $db->one("SELECT * FROM users WHERE role_code = 'admin' ORDER BY id LIMIT 1");
@@ -101,7 +103,7 @@ $inv = new InvoiceService();
 $i1 = $inv->createDraft($ids[2], [$pids[0], $pids[5]], ['payment_terms' => 'on_arrival']);
 $inv->validate($i1);
 $pay = new PaymentService();
-$pay->record($i1, ['amount' => '100000', 'method' => 'orange_money', 'reference' => 'OM2610.1234.A5', 'form_token' => bin2hex(random_bytes(16))]);
+$pay->record($i1, ['amount' => '100000', 'method' => 'orange_money', 'reference' => 'OM' . strtoupper(bin2hex(random_bytes(4))), 'form_token' => bin2hex(random_bytes(16))]);
 $i2 = $inv->createDraft($ids[4], [$pids[1], $pids[3]], ['payment_terms' => 'deposit']);
 $inv->validate($i2);
 $pay->record($i2, ['amount' => (string) ((int) $db->value('SELECT total_minor FROM invoices WHERE id = ?', [$i2])), 'method' => 'cash', 'form_token' => bin2hex(random_bytes(16))]);
@@ -120,4 +122,113 @@ $d2 = $del->plan($pids[1], ['mode' => 'delivery', 'agent_id' => $courier, 'plann
 $del->start($d2);
 $d3 = $del->plan($pids[3], ['mode' => 'delivery', 'agent_id' => $courier, 'planned_date' => (new DateTimeImmutable('+1 day'))->format('Y-m-d')]);
 
-echo "Démonstration créée. Comptes (mot de passe : $pw) : manager@, comptoir@, logistique@, caisse@, livreur@diarrassouba.test\n";
+// ---------- Activité sur deux mois : plusieurs destinations, vols à toutes les étapes ----------
+$at = fn (string $rel, string $time = '') => (new DateTimeImmutable($rel, local_tz()))->format('Y-m-d\T' . ($time ?: 'H:i'));
+$tariffs = ['CI' => $tariff];
+foreach (['SN' => ['Dakar', '7500'], 'ML' => ['Bamako', '7000'], 'BF' => ['Ouagadougou', '7000']] as $c => [$city, $rate]) {
+    $tariffs[$c] = $users->saveTariff(null, ['name' => "Standard Le Caire → $city", 'origin_country' => 'EG', 'destination_country' => $c, 'currency' => 'XOF', 'rate' => $rate, 'min_kg' => '1', 'is_active' => 1]);
+}
+$more = [
+    ['Ahmed Farouk Export', '+20 111 456 7788', 'Le Caire', 'EG'], ['Salma Mostafa', '+20 106 222 3141', 'Alexandrie', 'EG'],
+    ['Khaled Textiles', '+20 127 555 0909', 'Le Caire', 'EG'], ['Yasmine Adel', '+20 100 777 1212', 'Gizeh', 'EG'],
+    ['Kouamé Jean-Baptiste', '07 58 44 10 20', 'Abidjan', 'CI'], ['Bakayoko Awa', '05 46 77 88 01', 'San-Pédro', 'CI'],
+    ['Pharmacie du Plateau', '27 20 21 45 67', 'Abidjan', 'CI'], ['Touré Moussa', '01 40 50 60 70', 'Daloa', 'CI'],
+    ['Diop Aïssatou', '77 123 45 67', 'Dakar', 'SN'], ['Sall Commerce', '78 555 66 77', 'Thiès', 'SN'],
+    ['Ndiaye Cheikh', '76 400 11 22', 'Dakar', 'SN'], ['Keïta Oumar', '76 12 34 56', 'Bamako', 'ML'],
+    ['Sidibé Kadiatou', '66 77 88 99', 'Bamako', 'ML'], ['Ouédraogo Rasmané', '70 11 22 33', 'Ouagadougou', 'BF'],
+];
+$c = [];
+foreach ($more as [$n, $ph, $city, $cc]) {
+    $company = (bool) preg_match('/Export|Textiles|Pharmacie|Commerce/', $n);
+    $c[$n] = $clients->create(['name' => $n, 'phone' => $ph, 'city' => $city, 'country' => $cc, 'kind' => $company ? 'company' : 'person', 'default_payment_terms' => $cc === 'EG' ? 'before_shipping' : 'on_arrival'], true);
+}
+$egypt = [$ids[0], $ids[1], $c['Ahmed Farouk Export'], $c['Salma Mostafa'], $c['Khaled Textiles'], $c['Yasmine Adel']];
+$to = [
+    'CI' => [$ids[2], $ids[3], $ids[4], $ids[5], $c['Kouamé Jean-Baptiste'], $c['Bakayoko Awa'], $c['Pharmacie du Plateau'], $c['Touré Moussa']],
+    'SN' => [$c['Diop Aïssatou'], $c['Sall Commerce'], $c['Ndiaye Cheikh']],
+    'ML' => [$c['Keïta Oumar'], $c['Sidibé Kadiatou']],
+    'BF' => [$c['Ouédraogo Rasmané']],
+];
+$goods = ['Tissus wax et bazin', 'Pièces détachées auto', 'Téléphones et accessoires', 'Parfums et encens', 'Médicaments (ordonnance jointe)',
+    'Vêtements enfants', 'Électroménager petit format', 'Livres scolaires', 'Sacs et maroquinerie', 'Épices et dattes', 'Matériel de coiffure', 'Lampes et décoration'];
+$n = 0;
+$parcel = function (string $dest, string $daysAgo) use (&$n, $parcels, $egypt, $to, $goods, $tariffs, $at): int {
+    $n++;
+    $city = Domain::COUNTRY_CITY[$dest];
+    $res = $parcels->create([
+        'sender_id' => $egypt[$n % count($egypt)], 'recipient_id' => $to[$dest][$n % count($to[$dest])],
+        'description' => $goods[$n % count($goods)], 'weight_kg' => number_format(1.5 + fmod($n * 7.3, 28), 1, ',', ''), 'pieces' => 1 + $n % 4,
+        'tariff_id' => $tariffs[$dest], 'currency' => 'XOF', 'rate' => '', 'origin_country' => 'EG', 'origin_city' => 'Le Caire',
+        'destination_country' => $dest, 'destination_city' => $city, 'public_weight' => '1', 'received_at' => $at("-$daysAgo days", sprintf('%02d:%02d', 9 + $n % 8, ($n * 13) % 60)),
+    ]);
+    return $res['id'];
+};
+$batch = fn (string $dest, int $count, int $from) => array_map(fn ($i) => $parcel($dest, (string) ($from - $i)), range(0, $count - 1));
+
+// Vol clôturé il y a un mois : tout est livré, facturé et payé
+$old = $batch('CI', 7, 42);
+$s3 = $ships->create(['origin_country' => 'EG', 'origin_city' => 'Le Caire', 'destination_country' => 'CI', 'destination_city' => 'Abidjan', 'airline' => 'EgyptAir', 'flight_number' => 'MS 871', 'awb_number' => '077-1180 2231', 'freight_cost' => '520000', 'freight_currency' => 'XOF',
+    'planned_departure' => $at('-34 days', '02:30'), 'planned_arrival' => $at('-34 days', '07:45')]);
+$ships->addParcels($s3, $old);
+$ships->changeStatus($s3, 'departed', true, ['occurred_at' => $at('-34 days', '02:35')]);
+$ships->changeStatus($s3, 'arrived', true, ['occurred_at' => $at('-34 days', '07:50')]);
+foreach ($old as $i => $p) {
+    $parcels->changeStatus($p, 'at_depot', ['location' => 'Dépôt de Treichville, Abidjan', 'public_comment' => 'Disponible au retrait.']);
+    $row = $db->one('SELECT recipient_id FROM parcels WHERE id = ?', [$p]);
+    $name = (string) $db->value('SELECT name FROM clients WHERE id = ?', [$row['recipient_id']]);
+    $d = $del->plan($p, $i % 2 ? ['mode' => 'delivery', 'agent_id' => $courier, 'planned_date' => (new DateTimeImmutable('-31 days'))->format('Y-m-d'), 'address' => 'Abidjan'] : ['mode' => 'pickup']);
+    if ($i % 2) {
+        $del->start($d);
+    }
+    $del->confirm($d, ['recipient_name' => $name, 'recipient_id_note' => 'CNI …' . (4100 + $i * 37), 'confirm' => '1'], null);
+    $invId = $inv->createDraft((int) $row['recipient_id'], [$p], ['payment_terms' => 'on_arrival']);
+    $inv->validate($invId);
+    $db->update('invoices', ['issue_date' => (new DateTimeImmutable('-33 days'))->format('Y-m-d'), 'due_date' => (new DateTimeImmutable('-18 days'))->format('Y-m-d')], 'id = ?', [$invId]);
+    $total = (int) $db->value('SELECT total_minor FROM invoices WHERE id = ?', [$invId]);
+    $method = ['cash', 'orange_money', 'wave', 'mtn_momo'][$i % 4];
+    $pay->record($invId, ['amount' => (string) $total, 'method' => $method, 'reference' => $method === 'cash' ? '' : strtoupper(substr($method, 0, 2)) . bin2hex(random_bytes(4)),
+        'paid_at' => $at('-' . (32 - $i) . ' days', '11:20'), 'form_token' => bin2hex(random_bytes(16))]);
+}
+$ships->changeStatus($s3, 'closed', false, []);
+$exp->create(['category' => 'air_freight', 'shipment_id' => $s3, 'description' => 'Fret EgyptAir LTA 077-1180 2231', 'expense_date' => (new DateTimeImmutable('-34 days'))->format('Y-m-d'), 'amount' => '505000', 'currency' => 'XOF', 'payment_status' => 'paid'], null);
+$exp->create(['category' => 'handling', 'shipment_id' => $s3, 'description' => 'Manutention aéroport du Caire', 'expense_date' => (new DateTimeImmutable('-35 days'))->format('Y-m-d'), 'amount' => '42000', 'currency' => 'XOF', 'payment_status' => 'paid'], null);
+
+// Vol vers Dakar parti hier (en route)
+$sn = $batch('SN', 5, 9);
+$s4 = $ships->create(['origin_country' => 'EG', 'origin_city' => 'Le Caire', 'destination_country' => 'SN', 'destination_city' => 'Dakar', 'airline' => 'Air Sénégal', 'flight_number' => 'HC 302', 'awb_number' => '687-5520 1194', 'freight_cost' => '380000', 'freight_currency' => 'XOF',
+    'planned_departure' => $at('-1 day', '23:10'), 'planned_arrival' => $at('now', '05:40')]);
+$ships->addParcels($s4, $sn);
+$ships->changeStatus($s4, 'departed', true, ['occurred_at' => $at('-1 day', '23:20')]);
+$exp->create(['category' => 'air_freight', 'shipment_id' => $s4, 'description' => 'Fret Air Sénégal LTA 687-5520 1194', 'expense_date' => (new DateTimeImmutable('-1 day'))->format('Y-m-d'), 'amount' => '372000', 'currency' => 'XOF', 'payment_status' => 'unpaid'], null);
+$sender = fn (int $p) => (int) $db->value('SELECT sender_id FROM parcels WHERE id = ?', [$p]);
+$recipient = fn (int $p) => (int) $db->value('SELECT recipient_id FROM parcels WHERE id = ?', [$p]);
+$early = $inv->createDraft($sender($sn[0]), [$sn[0]], ['payment_terms' => 'before_shipping']);
+$inv->validate($early);
+$pay->record($early, ['amount' => (string) $db->value('SELECT total_minor FROM invoices WHERE id = ?', [$early]), 'method' => 'cash', 'paid_at' => $at('-5 days', '10:00'), 'form_token' => bin2hex(random_bytes(16))]);
+
+// Vols en préparation : Dakar (avec des colis), Bamako (vide, à charger)
+$s5 = $ships->create(['origin_country' => 'EG', 'origin_city' => 'Le Caire', 'destination_country' => 'SN', 'destination_city' => 'Dakar', 'airline' => 'Air Sénégal', 'flight_number' => 'HC 304',
+    'planned_departure' => $at('+5 days', '23:10'), 'planned_arrival' => $at('+6 days', '05:40')]);
+$ships->addParcels($s5, $batch('SN', 2, 4));
+$ships->create(['origin_country' => 'EG', 'origin_city' => 'Le Caire', 'destination_country' => 'ML', 'destination_city' => 'Bamako', 'airline' => 'Royal Air Maroc', 'flight_number' => 'AT 525',
+    'planned_departure' => $at('+7 days', '14:00'), 'planned_arrival' => $at('+7 days', '21:30')]);
+
+// Colis au comptoir, pas encore dans un vol (à charger)
+$waiting = array_merge($batch('CI', 4, 3), $batch('SN', 2, 2), $batch('ML', 3, 3), $batch('BF', 1, 1));
+foreach (array_slice($waiting, 0, 3) as $p) {
+    $parcels->changeStatus($p, 'awaiting', ['public_comment' => 'Prêt pour le prochain vol.']);
+}
+
+// Factures à suivre : une en retard (paiement partiel), une échéance proche, un brouillon
+$late = $inv->createDraft($recipient($waiting[0]), [$waiting[0]], ['payment_terms' => 'on_arrival', 'due_date' => (new DateTimeImmutable('-6 days'))->format('Y-m-d')]);
+$inv->validate($late);
+$db->update('invoices', ['issue_date' => (new DateTimeImmutable('-21 days'))->format('Y-m-d')], 'id = ?', [$late]);
+$pay->record($late, ['amount' => '20000', 'method' => 'wave', 'reference' => 'WV' . bin2hex(random_bytes(4)), 'paid_at' => $at('-8 days', '16:05'), 'form_token' => bin2hex(random_bytes(16))]);
+$soon = $inv->createDraft($sender($sn[1]), [$sn[1]], ['payment_terms' => 'before_shipping', 'due_date' => (new DateTimeImmutable('+2 days'))->format('Y-m-d')]);
+$inv->validate($soon);
+$inv->createDraft($recipient($waiting[6]), [$waiting[6]], []);
+$exp->create(['category' => 'packaging', 'description' => 'Cartons, film et ruban adhésif', 'expense_date' => (new DateTimeImmutable('-3 days'))->format('Y-m-d'), 'amount' => '38500', 'currency' => 'XOF', 'payment_status' => 'paid'], null);
+$exp->create(['category' => 'local_transport', 'description' => 'Navette aéroport FHB → dépôt', 'expense_date' => (new DateTimeImmutable('-6 days'))->format('Y-m-d'), 'amount' => '25000', 'currency' => 'XOF', 'payment_status' => 'paid'], null);
+$pids = array_merge($pids, $old, $sn, $waiting);
+
+echo "Démonstration créée (" . $db->value("SELECT COUNT(*) FROM parcels") . " colis, " . $db->value("SELECT COUNT(*) FROM shipments") . " vols au total). Comptes (mot de passe : $pw) : manager@, comptoir@, logistique@, caisse@, livreur@diarrassouba.test\n";

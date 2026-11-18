@@ -7,7 +7,7 @@
 </div>
 <section class="panel">
   <?php if (!$items): ?>
-    <p class="muted" style="margin:0">Aucune notification. Vous serez prévenu ici des incidents sur les colis et des paiements enregistrés.</p>
+    <p class="muted" style="margin:0">Aucune notification. Vous serez prévenu ici des problèmes sur les colis et des paiements reçus.</p>
   <?php else: ?>
     <ul class="feed">
       <?php foreach ($items as $n):
@@ -22,18 +22,18 @@
 </section>
 <?php if ($external !== []): ?>
 <section class="panel flush" style="margin-top:16px">
-  <div class="panel-head"><h2>Envois aux clients</h2><span class="muted small">Résultat réel de chaque tentative</span></div>
+  <div class="panel-head"><h2>Messages envoyés aux clients</h2><span class="muted small">Envoyé ou pas</span></div>
   <table class="table stacked">
-    <thead><tr><th>Date</th><th>Client</th><th>Canal</th><th>Événement</th><th>Résultat</th></tr></thead>
+    <thead><tr><th>Date</th><th>Client</th><th>Par</th><th>Pour</th><th>Résultat</th></tr></thead>
     <tbody>
     <?php foreach ($external as $n):
       $tone = ['sent' => 'done', 'failed' => 'alert', 'not_configured' => 'muted'][$n['status']] ?? 'muted';
-      $label = ['sent' => 'Envoyé', 'failed' => 'Échec', 'not_configured' => 'Canal non configuré'][$n['status']] ?? $n['status']; ?>
+      $label = ['sent' => 'Envoyé', 'failed' => 'Échec', 'not_configured' => 'Pas encore réglé'][$n['status']] ?? $n['status']; ?>
       <tr>
         <td data-label="Date"><?= e(dt($n['created_at'])) ?></td>
         <td class="primary" data-label="Client"><?= e($n['client_name'] ?? '—') ?></td>
-        <td data-label="Canal"><?= e(['email' => 'E-mail', 'sms' => 'SMS', 'whatsapp' => 'WhatsApp'][$n['channel']] ?? $n['channel']) ?></td>
-        <td data-label="Événement"><?= e(NotificationService::EVENTS[$n['event']] ?? $n['event']) ?></td>
+        <td data-label="Par"><?= e(['email' => 'E-mail', 'sms' => 'SMS', 'whatsapp' => 'WhatsApp'][$n['channel']] ?? $n['channel']) ?></td>
+        <td data-label="Pour"><?= e(NotificationService::EVENTS[$n['event']] ?? $n['event']) ?></td>
         <td data-label="Résultat"><span class="status tone-<?= $tone ?>"><?= e($label) ?></span><?= $n['error'] ? '<br><span class="small muted">' . e($n['error']) . '</span>' : '' ?></td>
       </tr>
     <?php endforeach ?>

@@ -18,8 +18,8 @@
 <?= $content ?>
 <footer class="public-foot">
   <strong><?= e($cfg('APP_NAME', 'DIARRASSOUBA IMPORT-EXPORT')) ?></strong><br>
-  <?= e(trim($cfg('COMPANY_ADDRESS') . ' ' . App\Core\Settings::get('COMPANY_PHONE'))) ?>
-  <?php if ($cfg('COMPANY_EMAIL')): ?><br><a href="mailto:<?= e($cfg('COMPANY_EMAIL')) ?>"><?= e($cfg('COMPANY_EMAIL')) ?></a><?php endif ?>
+  <?= e(trim(App\Core\Settings::get('COMPANY_ADDRESS') . ' ' . App\Core\Settings::get('COMPANY_PHONE'))) ?>
+  <?php if (App\Core\Settings::get('COMPANY_EMAIL')): ?><br><a href="mailto:<?= e(App\Core\Settings::get('COMPANY_EMAIL')) ?>"><?= e(App\Core\Settings::get('COMPANY_EMAIL')) ?></a><?php endif ?>
 </footer>
 </body>
 </html>

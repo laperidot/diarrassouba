@@ -17,6 +17,26 @@ final class Settings
             'hint' => 'Affiché sur la page publique de suivi, les factures, les reçus et les étiquettes. Laisser vide pour ne pas l’afficher.',
             'max' => 40, 'multiline' => false,
         ],
+        'COMPANY_EMAIL' => [
+            'label' => 'E-mail de l’entreprise',
+            'hint' => 'Affiché sur les documents, la page de suivi et les relevés partagés. Laisser vide pour ne pas l’afficher.',
+            'max' => 120, 'multiline' => false,
+        ],
+        'COMPANY_ADDRESS' => [
+            'label' => 'Adresse de l’agence',
+            'hint' => 'En tête des factures, reçus et relevés, et en pied de la page de suivi.',
+            'max' => 160, 'multiline' => false,
+        ],
+        'COMPANY_LEGAL' => [
+            'label' => 'Mentions légales',
+            'hint' => 'RCCM, compte contribuable… imprimés sous l’adresse sur les factures et relevés.',
+            'max' => 160, 'multiline' => false,
+        ],
+        'COMPANY_PAYMENT_INFO' => [
+            'label' => 'Moyens de paiement acceptés',
+            'hint' => 'Rubrique « Règlement » des factures et pied des relevés (numéros Orange Money, Wave, compte bancaire…).',
+            'max' => 300, 'multiline' => true,
+        ],
         'COMPANY_DEPOT_INFO' => [
             'label' => 'Informations de retrait au dépôt',
             'hint' => 'Jours et heures d’ouverture, adresse ou consignes : montrés au client quand son colis est disponible au dépôt.',
@@ -54,16 +74,21 @@ final class Settings
         return self::$cache;
     }
 
-    /** Vérifie puis enregistre les paramètres ; renvoie la liste des clés modifiées. */
+    /** Vérifie puis enregistre les paramètres envoyés (une clé absente garde sa valeur) ; renvoie la liste des clés modifiées. */
     public static function save(array $input, ?int $userId): array
     {
         $errors = [];
         $clean = [];
         foreach (self::EDITABLE as $key => $def) {
+            if (!array_key_exists($key, $input)) {
+                continue;
+            }
             $v = str_replace("\r\n", "\n", trim((string) ($input[$key] ?? '')));
             $v = (string) preg_replace('/[\x00-\x09\x0B\x0C\x0E-\x1F\x7F]/u', '', $def['multiline'] ? $v : str_replace("\n", ' ', $v));
             if (mb_strlen($v) > $def['max']) {
                 $errors[$key] = $def['max'] . ' caractères maximum.';
+            } elseif ($key === 'COMPANY_EMAIL' && $v !== '' && !filter_var($v, FILTER_VALIDATE_EMAIL)) {
+                $errors[$key] = 'Adresse e-mail invalide.';
             } elseif ($key === 'COMPANY_PHONE' && $v !== '' && !preg_match('/^\+?[\d\s().\-\/]{6,40}$/', $v)) {
                 $errors[$key] = 'Numéro invalide : chiffres, espaces et « + ( ) - . / » uniquement.';
             }
